@@ -1,0 +1,114 @@
+# Один экземпляр MFA Gate. Запускать через ./mfagatectl: он задаёт --env-file, -p ${COMPOSE_PROJECT_NAME} и каталог.
+#
+# Имена контейнеров, сетей и томов не фиксируются — их строит compose из COMPOSE_PROJECT_NAME, поэтому несколько
+# экземпляров и чужие проекты на одном хосте не конфликтуют. Порты хоста — только из обязательных переменных (${VAR:?}):
+# незаполненная переменная = отказ запуска, а не молчаливый захват порта. PostgreSQL наружу не публикуется.
+
+name: ${COMPOSE_PROJECT_NAME:?COMPOSE_PROJECT_NAME is required}
+
+x-logging: &logging
+  driver: json-file
+  options: {max-size: "10m", max-file: "5"}
+
+x-app: &app
+  image: ${MFA_GATE_IMAGE:?}:${MFA_GATE_VERSION:?}
+  build:
+    context: ../server
+    args: {MFA_GATE_VERSION: "${MFA_GATE_VERSION}"}
+  restart: unless-stopped
+  logging: *logging
+  read_only: true
+  tmpfs: [/tmp]
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
+  secrets: [master_key]
+  networks: [backend]
+  environment: &env
+    MFA_GATE_DATABASE_URL: postgresql+asyncpg://mfa-gate:${POSTGRES_PASSWORD:?}@postgres:5432/mfa-gate
+    MFA_GATE_MASTER_KEY_FILE: /run/secrets/master_key
+    MFA_GATE_PUBLIC_URL: ${MFA_GATE_PUBLIC_URL:?}
+    MFA_GATE_SERVER_NAME: ${MFA_GATE_SERVER_NAME:-MFA Gate}
+    MFA_GATE_VERSION: ${MFA_GATE_VERSION}
+    MFA_GATE_PUSH_TIMEOUT: ${MFA_GATE_PUSH_TIMEOUT:-45}
+    MFA_GATE_COOKIE_SECURE: ${MFA_GATE_COOKIE_SECURE:-auto}
+    MFA_GATE_TRUSTED_PROXIES: ${MFA_GATE_TRUSTED_PROXIES:-127.0.0.1/32,::1/128}
+    MFA_GATE_LOG_LEVEL: ${MFA_GATE_LOG_LEVEL:-INFO}
+    MFA_GATE_PUSH_FCM_CREDENTIALS_FILE: ${MFA_GATE_PUSH_FCM_CREDENTIALS_FILE:-}
+    MFA_GATE_PUSH_UNIFIEDPUSH_HOSTS: ${MFA_GATE_PUSH_UNIFIEDPUSH_HOSTS:-}
+    MFA_GATE_RADIUS_REQUIRE_MESSAGE_AUTHENTICATOR: ${MFA_GATE_RADIUS_REQUIRE_MESSAGE_AUTHENTICATOR:-true}
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    logging: *logging
+    environment:
+      POSTGRES_DB: mfagate
+      POSTGRES_USER: mfagate
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?}
+    volumes:
+      - ${MFA_GATE_DATA:?}/postgres:/var/lib/postgresql/data
+    networks: [backend]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mfagate -d mfagate"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  migrate:
+    <<: *app
+    command: ["migrate"]
+    restart: "no"
+    depends_on:
+      postgres: {condition: service_healthy}
+
+  api:
+    <<: *app
+    command: ["api"]
+    ports:
+      - "${MFA_GATE_HTTP_BIND:?}:${MFA_GATE_HTTP_PORT:?}:8080"
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8080/health/ready', timeout=3).status == 200 else 1)"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
+
+  radius:
+    <<: *app
+    command: ["radius"]
+    environment:
+      <<: *env
+      MFA_GATE_RADIUS_HOST: 0.0.0.0
+      MFA_GATE_RADIUS_PORT: "1812"
+    ports:
+      - "${MFA_GATE_RADIUS_BIND:?}:${MFA_GATE_RADIUS_PORT:?}:1812/udp"
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+    healthcheck:   # пульс обновляется каждые 10 с, если процесс жив и видит БД
+      test: ["CMD", "python", "-c", "import os,sys,time; sys.exit(0 if time.time() - os.path.getmtime('/tmp/radius.alive') < 45 else 1)"]
+      interval: 15s
+      timeout: 5s
+      retries: 4
+      start_period: 20s
+
+  worker:
+    <<: *app
+    command: ["worker"]
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import os,sys,time; sys.exit(0 if time.time() - os.path.getmtime('/tmp/worker.alive') < 60 else 1)"]
+      interval: 15s
+      timeout: 5s
+      retries: 4
+      start_period: 20s
+
+secrets:
+  master_key:
+    file: ${MFA_GATE_DATA:?}/secrets/master.key
+
+networks:
+  backend: {}

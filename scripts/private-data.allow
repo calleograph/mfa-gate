@@ -1,0 +1,80 @@
+# Разрешённое для scripts/check_private_data.py. Формат: <вид> <значение>; # — комментарий.
+#   domain   — домен и все его поддомены (только публичные сервисы и стандарты, не адреса организаций)
+#   email    — конкретный адрес
+#   ip       — адрес или сеть (документационные и частные диапазоны разрешены в самом сканере)
+#   key-file — glob файлов, где допустим закрытый ключ (только тестовые фикстуры)
+#   skip     — glob файлов, которые не проверяются целиком
+# example.org/com/net, *.example, *.test, *.invalid, localhost разрешены всегда.
+
+# Сам сканер и этот список содержат образцы шаблонов
+skip scripts/check_private_data.py
+skip scripts/private-data.allow
+# Тексты лицензий
+skip LICENSE
+skip */OFL.txt
+skip */LICENSE-*.txt
+
+# Стандарты и спецификации
+domain apache.org
+domain w3.org
+domain ietf.org
+domain rfc-editor.org
+domain iana.org
+domain owasp.org
+domain keepachangelog.com
+domain semver.org
+domain schemastore.org
+domain json-schema.org
+domain openapis.org
+domain swagger.io
+
+# Код, пакеты, CI
+domain github.com
+domain githubusercontent.com
+domain ghcr.io
+domain docker.com
+domain docker.io
+domain python.org
+domain pypi.org
+domain pythonhosted.org
+domain gradle.org
+domain jetbrains.com
+domain kotlinlang.org
+domain maven.org
+domain apache.maven.org
+domain android.com
+domain google.com
+domain gstatic.com
+
+# Сервисы доставки push и их API (используются в коде сервера и приложения)
+domain googleapis.com
+domain firebase.google.com
+domain firebaseio.com
+domain huawei.com
+domain cloud.huawei.com
+domain unifiedpush.org
+domain ntfy.sh
+
+# Документация используемых программ
+domain fastapi.tiangolo.com
+domain sqlalchemy.org
+domain postgresql.org
+domain openvpn.net
+domain freeradius.org
+domain nginx.org
+domain caddyserver.com
+domain letsencrypt.org
+domain microsoft.com
+domain cisco.com
+domain fortinet.com
+domain mikrotik.com
+domain pfsense.org
+domain netgate.com
+
+# Публичная документация изученных продуктов (источники исследования)
+domain multifactor.ru
+domain ideco.ru
+domain telegram.org
+
+# install.sh: адрес только для определения основного интерфейса (ip route get), трафик не отправляется
+ip 1.1.1.1

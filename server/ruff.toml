@@ -1,0 +1,10 @@
+line-length = 170
+target-version = "py312"
+extend-exclude = ["migrations/versions"]
+
+[lint]
+select = ["E", "F", "W", "B", "BLE", "UP", "PLC0415", "RUF100", "S"]
+ignore = ["S101", "S311", "S105", "S106", "B008"]   # assert в тестах, random не для криптографии, константы-метки, Depends() в сигнатурах FastAPI
+
+[lint.per-file-ignores]
+"tests/*" = ["S", "PLC0415", "BLE001", "E501"]

@@ -1,0 +1,5 @@
+# 0013. Собственный VPN-клиент
+
+**Решение.** Не входит в MVP; отдельное направление после стабилизации MFA.
+
+**Заключение.** Ни Multifactor, ни privacyIDEA не делают свой VPN — они встраиваются в существующие шлюзы через RADIUS/API. Свой клиент имеет смысл только вместе со своим шлюзом: Android `VpnService` + WireGuard (wireguard-android, Apache-2.0), Windows — wireguard-windows + Wintun. ics-openvpn (GPLv2) несовместим с Apache-2.0. Оценка: прототип 2–3 месяца, промышленная версия 6–9 месяцев (управление ключами WireGuard, раздача конфигураций, обновления клиента, подписание драйвера для Windows). Интеграция с MFA Gate — выдача краткоживущей конфигурации после подтверждения push. Подробно: [research/multifactor-and-vpn.md](../research/multifactor-and-vpn.md).

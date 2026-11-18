@@ -1,0 +1,76 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+
+# Экземпляр сервера: секреты, данные, копии
+deploy/.env
+deploy/data/
+deploy/backups/
+deploy/compose.override.yml
+
+# Android: подпись и локальные настройки
+*.jks
+*.keystore
+signing.properties
+local.properties
+google-services.json
+android/build/
+android/.gradle/
+android/.kotlin/
+android/app/build/
+*.apk
+*.aab
+
+# Прочее
+node_modules/
+.idea/
+.vscode/
+.DS_Store
+
+# Локальный архив прежней реализации (Laravel) — в публикацию не входит
+_archive/
+# Остатки прежней реализации в рабочем каталоге (копия — в _archive/mfa-gate-laravel-2026.06.15.tar.gz)
+/app/
+/bootstrap/
+/config/
+/database/
+/docker/
+/lang/
+/public/
+/resources/
+/routes/
+/storage/
+/tests/
+/vendor/
+/openvpn/
+/artisan
+/composer.json
+/composer.lock
+/package.json
+/package-lock.json
+/phpunit.xml
+/.phpunit.result.cache
+/Makefile
+/RELEASE.md
+/docker-compose.yml
+/install.ps1
+/install.sh.laravel
+/vite.config.js
+/.env.example
+/.dockerignore
+/.gitattributes
+/*.docx
+/mfa-network.html
+/mfa-userflow.html
+/docs/ADMIN.md
+/docs/ARCHITECTURE.md
+/docs/BACKUP.md
+/docs/DEPLOYMENT.md
+/docs/LDAP.md
+/docs/OPENVPN.md
+/docs/SECURITY.md
+/docs/TROUBLESHOOTING.md
+/docs/USER.md

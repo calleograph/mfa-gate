@@ -1,0 +1,6 @@
+# Как в AD («Authenticated Users» читают каталог): вошедший пользователь видит структуру и группы.
+# Нужно для режима без сервисной учётной записи (bind пользователем). Применяется после засева.
+dn: olcDatabase={1}mdb,cn=config
+changetype: modify
+add: olcAccess
+olcAccess: {2}to dn.subtree="dc=example,dc=org" attrs=entry,objectClass,cn,uid,member,uniqueMember by users read by * break

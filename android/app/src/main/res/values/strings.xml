@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Twofold</string>
+    <string name="channel_requests">Запросы входа</string>
+    <string name="channel_requests_desc">Уведомления о попытках входа, которые нужно подтвердить или отклонить</string>
+    <string name="notif_title">Запрос на вход</string>
+    <string name="notif_open">Открыть запрос</string>
+</resources>
