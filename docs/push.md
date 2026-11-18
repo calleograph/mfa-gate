@@ -1,5 +1,7 @@
 # Доставка push-уведомлений
 
+Справочник по доставке push. Пошаговое включение FCM (проект Firebase, сборка файла, `compose.override.yml`, проверка): [Настройка Push](../wiki/Настройка-Push.md).
+
 Push в MFA Gate — только сигнал «есть запрос». Само уведомление выглядит так:
 
 ```json
@@ -22,7 +24,7 @@ Push в MFA Gate — только сигнал «есть запрос». Сам
 ### Что нужно от Firebase
 
 1. Проект Firebase организации (console.firebase.google.com) с включённым **Firebase Cloud Messaging API (V1)**.
-2. Android-приложение в проекте с пакетом `mfa_gate.authenticator`. Файл `google-services.json` в сборку не кладётся: параметры клиента приходят с сервера.
+2. Android-приложение в проекте с пакетом `io.github.calleograph.mfagate`. Файл `google-services.json` в сборку не кладётся: параметры клиента приходят с сервера.
 3. **Service account** с правом отправки сообщений (роль «Firebase Cloud Messaging API Admin»). В консоли: Project settings → Service accounts → Generate new private key. Получится JSON с закрытым ключом, это секрет сервера.
 
 ### Формат файла
@@ -61,44 +63,16 @@ MFA Gate читает один JSON: файл service account как есть, �
 
 ### Подключение файла в контейнер
 
-Файл нужен и `api` (отдаёт `client` телефону), и `worker` (отправляет push).
+Файл нужен и `api` (отдаёт `client` телефону), и `worker` (отправляет push). Он подключается как Docker secret через `deploy/compose.override.yml`:
 
-```bash
-cd deploy
-install -m 644 /путь/к/fcm.json data/secrets/fcm.json   # каталог secrets уже 700; файл читает uid 10001 в контейнере
-```
+- файл — `deploy/data/secrets/fcm.json`, права 644 (каталог `secrets` — 700; файл читает uid 10001 в контейнере);
+- в `compose.override.yml` — секрет `fcm` у сервисов `api` и `worker`;
+- в `deploy/.env` — `MFA_GATE_PUSH_FCM_CREDENTIALS_FILE=/run/secrets/fcm`;
+- применить — `sudo mfagatectl start`.
 
-`deploy/compose.override.yml` (подхватывается `mfagatectl` автоматически, в Git не хранится):
+Готовые команды и проверка: [Настройка Push, шаги 3–5](../wiki/Настройка-Push.md#шаг-4-подключите-файл-к-контейнерам).
 
-```yaml
-services:
-  api:
-    secrets: [master_key, fcm]
-  worker:
-    secrets: [master_key, fcm]
-
-secrets:
-  fcm:
-    file: ${MFA_GATE_DATA:?}/secrets/fcm.json
-```
-
-В `deploy/.env`:
-
-```
-MFA_GATE_PUSH_FCM_CREDENTIALS_FILE=/run/secrets/fcm
-```
-
-Применить и проверить:
-
-```bash
-./mfagatectl start          # пересоздаёт контейнеры с новым секретом
-./mfagatectl logs worker | grep 'push-провайдеры'    # ожидается: fcm
-./mfagatectl diagnose       # «Доставка push» — ok
-```
-
-Телефоны, привязанные до включения FCM, получат параметры при следующем запросе `/config`. Если уведомления не приходят, откройте приложение или привяжите телефон заново.
-
-Если файл не читается или в нём нет нужных полей, в журнале `worker` появится «FCM не настроен», а сервер продолжит работать без push.
+Признаки работы: в журнале `worker` строка `push-провайдеры: fcm`, в `mfagatectl diagnose` — «Доставка push» `OK`. Если файл не читается или в нём нет нужных полей, в журнале `worker` появится `FCM не настроен: …`, а сервер продолжит работать без push. Телефоны, привязанные до включения FCM, получат параметры при следующем запросе `/config`.
 
 ## HMS (экспериментально)
 

@@ -1,6 +1,8 @@
 # Подключение VPN-шлюзов и приложений
 
-Состояние: протокол RADIUS покрыт сквозными тестами на стенде. **Настройки конкретных шлюзов ниже не проверены на реальном оборудовании.** Они собраны по документации производителей и помечены «требует проверки на стенде». Если вы проверили шлюз, пришлите исправления (см. [CONTRIBUTING.md](../CONTRIBUTING.md)).
+Справочник по протоколу RADIUS в MFA Gate и по запросу входа через REST API. Пошаговая настройка: [Настройка RADIUS](../wiki/Настройка-RADIUS.md) (ресурс, клиент, секрет, проверка), [Подключение VPN](../wiki/Подключение-VPN.md) (OpenVPN, Windows NPS/RRAS, Ideco, Cisco, FortiGate, MikroTik, pfSense), [Интеграция по REST API](../wiki/Интеграция-по-REST-API.md).
+
+Состояние: протокол RADIUS покрыт сквозными тестами на стенде. **Настройки конкретных шлюзов не проверены на реальном оборудовании** — они собраны по документации производителей и помечены «требует проверки на стенде». Если вы проверили шлюз, пришлите исправления (см. [CONTRIBUTING.md](../CONTRIBUTING.md)).
 
 ## Общие правила RADIUS
 
@@ -41,91 +43,36 @@ Reply-Message передаётся в UTF-8 на русском. Проверь�
 
 Режим «пароль и код в одной строке» и режим «только второй фактор» (пароль проверяет шлюз или NPS) по RADIUS **не реализованы**.
 
-### Подготовка в MFA Gate
+## Шлюзы
 
-1. Создайте ресурс, например «VPN офис».
-2. Создайте RADIUS-клиента для адреса шлюза (как его видит MFA Gate, с учётом NAT). Скопируйте секрет: он показывается один раз.
-3. Откройте UDP 1812 только для адреса шлюза ([install.md](install.md#firewall-для-radius)).
-4. Проверьте вход тестовым пользователем и посмотрите историю входов: канал `radius`, ресурс, причина.
+| Шлюз | Как подключается | PAP | Access-Challenge (код TOTP) | Статус |
+|---|---|---|---|---|
+| OpenVPN 2.5+ (скрипт `integrations/openvpn/mfa-gate-openvpn.sh`) | REST API, отложенная проверка | — | через `static-challenge` | требует проверки на стенде |
+| OpenVPN (`openvpn-plugin-auth-pam` + `pam_radius`) | RADIUS | да | зависит от версий плагина и клиента | требует проверки на стенде |
+| Windows NPS / RRAS | RADIUS через NPS | только для клиентов с PAP; MS-CHAPv2/EAP не работают | нет данных | требует проверки на стенде |
+| Ideco UTM / NGFW | внешний каталог RADIUS | нет данных | нет данных | требует проверки на стенде |
+| Cisco ASA / Secure Client | RADIUS | да | да (по документации) | требует проверки на стенде |
+| FortiGate | RADIUS, `remoteauthtimeout 60` | да | да (по документации) | требует проверки на стенде |
+| MikroTik RouterOS | RADIUS | да | по имеющимся сведениям нет; таймаут ≤ ~10 с | надёжного сценария нет |
+| pfSense (OpenVPN) | RADIUS | да | нет | требует проверки на стенде |
 
-Ниже `198.51.100.20` — адрес сервера MFA Gate, `ТЕКСТ_СЕКРЕТА` — секрет из панели.
+Конфигурации и шаги: [Подключение VPN](../wiki/Подключение-VPN.md). Адрес RADIUS-клиента в MFA Gate — адрес, с которого пакеты приходят на сервер (после NAT); для NPS — адрес сервера NPS. Доступ к UDP 1812 ограничивается в цепочке `DOCKER-USER` ([install.md](install.md#межсетевой-экран)).
 
-## OpenVPN (сервер сообщества 2.6)
+## Скрипт OpenVPN без RADIUS
 
-Требует проверки на стенде.
+`integrations/openvpn/mfa-gate-openvpn.sh` — обработчик `auth-user-pass-verify … via-file` с отложенной проверкой: возвращает OpenVPN код 2 и записывает решение в `auth_control_file`, когда придёт ответ. Настройки — в `/etc/openvpn/mfa-gate.conf` (`MFA_GATE_OPENVPN_CONF` — другой путь):
 
-### Вариант 1: openvpn-plugin-auth-pam + pam_radius
+| Переменная | Назначение |
+|---|---|
+| `MFA_GATE_URL` | адрес MFA Gate (`https://mfa.example.org`) |
+| `MFA_GATE_KEY` | ключ API `key_id:секрет` с правом `auth:write`, привязанный к ресурсу VPN |
+| `MFA_GATE_WAIT` | сколько ждать решения, секунд (по умолчанию 50) |
 
-Плагин проверяет пароль в отдельном процессе (отложенная аутентификация), поэтому ожидание push не блокирует остальных клиентов.
-
-```
-# server.conf
-plugin /usr/lib/openvpn/openvpn-plugin-auth-pam.so openvpn
-verify-client-cert require      # или none, если только логин/пароль
-auth-gen-token 28800            # иначе повторная аутентификация каждый час (reneg-sec) снова запросит push
-hand-window 75                  # время на рукопожатие с аутентификацией, больше MFA_GATE_PUSH_TIMEOUT
-```
-
-```
-# /etc/pam.d/openvpn
-auth    required  pam_radius_auth.so
-account required  pam_permit.so
-```
-
-```
-# /etc/pam_radius_auth.conf: сервер[:порт]  секрет  таймаут
-198.51.100.20:1812  ТЕКСТ_СЕКРЕТА  60
-```
-
-- pam_radius до версии 3.0 не отправляет Message-Authenticator. С такой версией пакеты будут отброшены. Обновите модуль или (временно) отключите проверку в MFA Gate.
-- Коды TOTP: в конфигурации клиента `static-challenge "Код из приложения" 1`. Клиент передаёт пароль и код вместе, плагин отдаёт код модулю PAM, когда pam_radius получит Access-Challenge. Эту цепочку нужно проверить на вашей версии плагина и клиента.
-
-### Вариант 2: radiusplugin
-
-`radiusplugin` (сторонний, давно не обновлялся) умеет accounting и атрибуты, но Access-Challenge не поддерживает. Как он ведёт себя с отложенной проверкой и долгим ожиданием, не проверено.
-
-## Windows Server: NPS / RRAS
-
-Требует проверки на стенде.
-
-Схема: RRAS → NPS → группа удалённых RADIUS-серверов → MFA Gate. MFA Gate должен получить пароль по PAP. Клиенты Windows VPN (SSTP, IKEv2, L2TP) обычно используют MS-CHAPv2 или EAP, а из них пароль не извлечь. **Если NPS проверяет MS-CHAPv2 сам и пересылает только имя, вход работать не будет**: режим «только второй фактор» по RADIUS не реализован.
-
-Настройки NPS:
-
-1. **Remote RADIUS Server Groups** → новая группа → сервер `198.51.100.20`, общий секрет.
-2. Вкладка **Load Balancing** сервера: «Number of seconds without response before request is considered dropped» — **60**; «Maximum number of dropped requests before server is identified as unavailable» — не меньше 2.
-3. **Connection Request Policies**: пересылать запросы (Forward requests) в эту группу.
-4. В RRAS: **Security → Authentication provider: RADIUS → Configure**: таймаут **60** с.
-5. Проверьте, что NPS добавляет Message-Authenticator в пересылаемые запросы (в аудите MFA Gate не должно быть `radius.bad_authenticator`).
-
-## Ideco UTM / NGFW
-
-Требует проверки на стенде.
-
-Ideco подключает MFA Gate как внешний каталог RADIUS:
-
-1. **Пользователи → Внешние каталоги → RADIUS**: адрес `198.51.100.20`, порт 1812, секрет.
-2. **VPN-подключения → Доступ по VPN**: добавить группу RADIUS и сделать RADIUS каталогом по умолчанию для нужного правила.
-3. Встроенную двухфакторную аутентификацию Ideco для этого правила не включайте: второй фактор даёт MFA Gate.
-
-Что проверить на стенде:
-
-- для каких протоколов (IKEv2, L2TP/IPsec, SSTP, Ideco Client) Ideco отправляет пароль по PAP;
-- таймаут ожидания ответа RADIUS: в публичной документации его нет. Если он меньше 60 с, уменьшите `MFA_GATE_PUSH_TIMEOUT`;
-- отправляет ли Ideco Message-Authenticator;
-- показывает ли Ideco Client окно ввода кода по Access-Challenge и в какой кодировке выводит Reply-Message;
-- что делает Ideco с пользователем, которого нет в его локальной базе (заводит ли его по ответу RADIUS).
-
-## Другие шлюзы
-
-Ключевые настройки. Всё требует проверки на стенде.
-
-| Шлюз | Где настраивать | Что важно |
-|---|---|---|
-| Cisco ASA / Secure Client | `aaa-server MFAGATE protocol radius`; `aaa-server MFAGATE (outside) host 198.51.100.20` → `key`, `timeout 60`, `authentication-port 1812` | Access-Challenge показывается клиентом как запрос кода. Accounting в туннельной группе не включайте |
-| FortiGate | `config user radius` → `set server`, `set secret`, `set auth-type pap`; `config system global` → `set remoteauthtimeout 60` | По умолчанию `remoteauthtimeout` 5 с, с ним push не успеет. FortiClient показывает запрос кода по challenge |
-| MikroTik RouterOS | `/radius add service=ppp address=198.51.100.20 secret=… timeout=…`; в PPP-сервере разрешить PAP | По умолчанию таймаут около 1 с, а верхний предел зависит от версии (сообщают о пределе около 10 с). Access-Challenge RouterOS, по имеющимся сведениям, не поддерживает. Если таймаут не поднимается выше 10 с, push не уложится, а коды TOTP по challenge не сработают. Проверьте на своей версии; для MikroTik пока надёжного сценария нет |
-| pfSense | System → User Manager → Authentication Servers → RADIUS: протокол PAP, Authentication Timeout **60** | Access-Challenge в OpenVPN-сервере pfSense не поддерживается, работает только push |
+- `static-challenge` в конфигурации клиента: ответ `SCRV1:<пароль>:<код>` разбирается, код передаётся в поле `otp`. Пустой код — подтверждение на телефоне.
+- В `source_ip` уходит `untrusted_ip`, в `client_name` — `OpenVPN <common_name>`.
+- Ключ и пароль не попадают в аргументы процессов: ключ передаётся `curl` через дескриптор файла, пароль — в теле запроса.
+- Любая ошибка (сеть, HTTP-ошибка, таймаут) — отказ. Решения пишутся в syslog с тегом `mfa-gate-openvpn`.
+- Если OpenVPN понижает права (`user`/`group` в `server.conf`), файл настроек должен быть читаем этой группой (`640`, группа OpenVPN).
 
 ## REST API для своих приложений
 

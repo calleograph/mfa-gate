@@ -79,7 +79,7 @@ async def checks(session: AsyncSession) -> dict:
                       "" if providers else "Задайте MFA_GATE_PUSH_FCM_CREDENTIALS_FILE (см. docs/push.md)"))
 
     if not cfg.public_url.startswith("https://"):
-        out.append(_check("Публичный адрес", "warning", f"{cfg.public_url} — не HTTPS", "Приложение в рабочей сборке подключается только по HTTPS"))
+        out.append(_check("Публичный адрес", "warning", f"{cfg.public_url} — не HTTPS", "По HTTP — только изолированная сеть: телефоны привязываются после явного подтверждения риска. Для эксплуатации настройте HTTPS через reverse proxy"))
     else:
         out.append(_check("Публичный адрес", "ok", cfg.public_url))
 

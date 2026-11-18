@@ -16,7 +16,7 @@ CTL="$DEPLOY/mfagatectl"
 PRODUCT_VERSION="$(cat "$ROOT/VERSION")"
 LOG_DIR="/var/log/mfa-gate"
 LOG="$LOG_DIR/install-$(date +%Y%m%d-%H%M%S).log"
-STEPS=8
+STEPS=6
 STEP=0
 STAGE="начало"
 

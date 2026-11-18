@@ -1,5 +1,7 @@
 # REST API
 
+Справочник по программным интерфейсам. Пошаговое подключение своего приложения (ключ, запрос входа, ожидание решения): [Интеграция по REST API](../wiki/Интеграция-по-REST-API.md).
+
 MFA Gate предоставляет три программных интерфейса:
 
 | Префикс | Кто вызывает | Аутентификация |
@@ -20,11 +22,13 @@ MFA Gate предоставляет три программных интерфе
 
 ### Ключ API (интеграции)
 
-Ключ создаётся в панели («Ключи API») или командой на сервере из каталога `deploy/` (compose читает `deploy/.env`):
+Ключ создаётся в панели («API-клиенты» → «Создать ключ») или командой на сервере из каталога `deploy/` (compose читает `deploy/.env` и `compose.override.yml` из текущего каталога):
 
 ```bash
-docker compose exec api python -m mfa_gate create-api-client "Портал" --scopes auth:write
+cd /opt/mfa-gate/deploy && sudo docker compose exec api python -m mfa_gate create-api-client "Портал" --scopes auth:write
 ```
+
+`--scopes all` выдаёт все права, кроме `admins:*`.
 
 Команда печатает `key_id:secret` один раз. На сервере хранится только хэш секрета. Запросы идут с Basic-аутентификацией:
 

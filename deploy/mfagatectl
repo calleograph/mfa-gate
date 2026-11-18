@@ -3,7 +3,7 @@
 # Все команды идемпотентны там, где это возможно; любая ошибка — понятное сообщение и ненулевой код.
 set -Eeuo pipefail
 
-HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+HERE="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"   # readlink: команда вызывается и через /usr/local/bin/mfagatectl
 ENV_FILE="${MFA_GATE_ENV_FILE:-$HERE/.env}"
 COMPOSE_FILE="$HERE/compose.yml"
 
@@ -67,9 +67,12 @@ ensure_image() {
   if [[ "$MFA_GATE_IMAGE" == */* ]]; then
     say "загрузка образа $MFA_GATE_IMAGE:$MFA_GATE_VERSION"
     if dc pull --quiet migrate api radius worker postgres; then return 0; fi
-    # нет доступа к реестру или версия ещё не опубликована — собираем тот же тег из исходников этого каталога
+    # нет доступа к реестру или версия ещё не опубликована — собрать можно только ту версию, что лежит в этом каталоге
     [[ "${MFA_GATE_NO_BUILD:-}" == 1 ]] && die "не удалось загрузить образ $MFA_GATE_IMAGE:$MFA_GATE_VERSION"
     [[ -f "$HERE/../server/Dockerfile" ]] || die "образ $MFA_GATE_IMAGE:$MFA_GATE_VERSION недоступен, исходников для сборки нет"
+    local src_version; src_version="$(tr -d '[:space:]' < "$HERE/../VERSION" 2>/dev/null || true)"
+    [[ "$src_version" == "$MFA_GATE_VERSION" ]] || die "образа $MFA_GATE_IMAGE:$MFA_GATE_VERSION нет в реестре, а исходники в этом каталоге — версии ${src_version:-?}: \
+обновите исходники (sudo git -C $(cd "$HERE/.." && pwd) fetch --tags && sudo git -C $(cd "$HERE/.." && pwd) checkout v$MFA_GATE_VERSION) и повторите"
     warn "образ не загружен — сборка из исходников (несколько минут)"
   else
     say "локальная сборка образа $MFA_GATE_IMAGE:$MFA_GATE_VERSION"
