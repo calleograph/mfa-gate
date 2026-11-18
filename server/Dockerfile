@@ -10,7 +10,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 COPY alembic.ini ./
 COPY migrations ./migrations
-COPY mfagate ./mfa-gate
+COPY mfa_gate ./mfa_gate
 COPY web ./web
 
 USER mfagate

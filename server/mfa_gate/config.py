@@ -11,7 +11,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="MFA_GATE_", extra="ignore")
 
-    database_url: str = "postgresql+asyncpg://mfa-gate:mfagate@postgres:5432/mfa-gate"
+    database_url: str = "postgresql+asyncpg://mfagate:mfagate@postgres:5432/mfagate"
     master_key: str = ""              # base64 от 32 байт; шифрует TOTP-секреты, секреты RADIUS/LDAP, push-токены
     master_key_file: str = ""         # альтернатива master_key: путь к файлу с ключом
     public_url: str = "http://localhost:8080"   # адрес, который увидит мобильное приложение (в QR привязки)

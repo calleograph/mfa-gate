@@ -121,7 +121,7 @@ async def _mfa_ok(session: AsyncSession, row: AdminSession, user: User, ip: str,
 
 @router.post("/auth/mfa")
 async def mfa(body: CodeIn, request: Request, session: AsyncSession = Depends(get_session)):
-    """TOTP-код или аварийный одноразовый код (выдаётся только командой mfagate emergency-access на сервере)."""
+    """TOTP-код или аварийный одноразовый код (выдаётся только командой mfagatectl emergency на сервере)."""
     await login_limiter.check(session, client_ip(request))
     row, user = await _pending_session(request, session)
     _require_password_changed(user)
