@@ -13,7 +13,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DEPLOY="$ROOT/deploy"
 ENV_FILE="$DEPLOY/.env"
 CTL="$DEPLOY/mfagatectl"
-VERSION="$(cat "$ROOT/VERSION")"
+PRODUCT_VERSION="$(cat "$ROOT/VERSION")"
 LOG_DIR="/var/log/mfa-gate"
 LOG="$LOG_DIR/install-$(date +%Y%m%d-%H%M%S).log"
 STEPS=8
@@ -40,15 +40,17 @@ if [[ $EUID -ne 0 ]]; then
   exit 1
 fi
 mkdir -p "$LOG_DIR" && chmod 700 "$LOG_DIR" && : > "$LOG" && chmod 600 "$LOG"
-bold "MFA Gate $VERSION — установка All-in-One"
+bold "MFA Gate $PRODUCT_VERSION — установка All-in-One"
 echo "журнал: $LOG"
 
 # ------------------------------------------------------------------------------------------------ 1. система
 step "Проверка сервера"
-. /etc/os-release 2>/dev/null || fail "не удалось определить ОС" "поддерживаются Ubuntu 22.04/24.04 и Debian 12"
-case "${ID:-}" in
-  ubuntu|debian) ok "ОС: ${PRETTY_NAME:-$ID}" ;;
-  *) fail "ОС ${PRETTY_NAME:-неизвестна} не поддерживается установщиком" "используйте Ubuntu 22.04/24.04 или Debian 12; на других ОС — ручная установка (docs/install.md)" ;;
+# os-release читается в подоболочке: он определяет свои VERSION/ID/NAME, которые иначе затёрли бы переменные установщика
+os_id="$(. /etc/os-release 2>/dev/null && echo "${ID:-}")"
+os_name="$(. /etc/os-release 2>/dev/null && echo "${PRETTY_NAME:-$ID}")"
+case "$os_id" in
+  ubuntu|debian) ok "ОС: $os_name" ;;
+  *) fail "ОС ${os_name:-неизвестна} не поддерживается установщиком" "используйте Ubuntu 22.04 и новее или Debian 12; на других ОС — ручная установка (docs/install.md)" ;;
 esac
 case "$(uname -m)" in x86_64|aarch64) ok "архитектура $(uname -m)" ;; *) fail "архитектура $(uname -m) не поддерживается" "нужен x86_64 или aarch64" ;; esac
 mem_mb=$(awk '/MemTotal/ {print int($2/1024)}' /proc/meminfo)
@@ -111,7 +113,7 @@ else
   chmod 600 "$ENV_FILE"
   set_env() { if grep -q "^$1=" "$ENV_FILE"; then sed -i "s|^$1=.*|$1=$2|" "$ENV_FILE"; else echo "$1=$2" >> "$ENV_FILE"; fi; }
   set_env COMPOSE_PROJECT_NAME "${COMPOSE_PROJECT_NAME:-mfa-gate}"
-  set_env MFA_GATE_VERSION "$VERSION"
+  set_env MFA_GATE_VERSION "$PRODUCT_VERSION"
   set_env MFA_GATE_HTTP_PORT "$http_port"
   set_env MFA_GATE_RADIUS_PORT "$radius_port"
   set_env MFA_GATE_PUBLIC_URL "${MFA_GATE_PUBLIC_URL:-http://$ip_addr:$http_port}"
@@ -119,6 +121,7 @@ else
   ok "создан $ENV_FILE (права 600)"
 fi
 # shellcheck disable=SC1090
+bash -n "$ENV_FILE" 2>>"$LOG" || fail "файл $ENV_FILE повреждён (синтаксическая ошибка)" "исправьте строку, указанную в журнале, или удалите файл и запустите установку заново"
 set -a; . "$ENV_FILE"; set +a
 info "адрес панели: $MFA_GATE_PUBLIC_URL"
 info "RADIUS: UDP $MFA_GATE_RADIUS_BIND:$MFA_GATE_RADIUS_PORT"
