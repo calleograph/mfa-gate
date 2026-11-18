@@ -17,11 +17,11 @@ val signing = Properties().apply {
 fun sign(name: String, env: String): String? = System.getenv(env) ?: signing.getProperty(name)
 
 android {
-    namespace = "twofold.authenticator"
+    namespace = "io.github.calleograph.mfagate"
     compileSdk = 37
 
     defaultConfig {
-        applicationId = "twofold.authenticator"
+        applicationId = "io.github.calleograph.mfagate"
         minSdk = 26
         targetSdk = 36
         // смещение нужно только проверке «обновление поверх»: предыдущая сборка той же версии с меньшим versionCode
@@ -38,13 +38,13 @@ android {
     }
 
     signingConfigs {
-        val store = sign("storeFile", "TWOFOLD_KEYSTORE")
+        val store = sign("storeFile", "MFA_GATE_KEYSTORE")
         if (store != null) {
             create("release") {
                 storeFile = file(store)
-                storePassword = sign("storePassword", "TWOFOLD_KEYSTORE_PASSWORD")
-                keyAlias = sign("keyAlias", "TWOFOLD_KEY_ALIAS")
-                keyPassword = sign("keyPassword", "TWOFOLD_KEY_PASSWORD")
+                storePassword = sign("storePassword", "MFA_GATE_KEYSTORE_PASSWORD")
+                keyAlias = sign("keyAlias", "MFA_GATE_KEY_ALIAS")
+                keyPassword = sign("keyPassword", "MFA_GATE_KEY_PASSWORD")
             }
         }
     }

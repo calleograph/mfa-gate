@@ -115,7 +115,7 @@ async def request_one(request_id: uuid.UUID, device: Device = Depends(device_aut
     req = await session.get(AuthRequest, request_id)
     if req is None or req.user_id != device.user_id or req.method != "push":
         raise HTTPException(404, {"code": "not_found", "message": "Запрос не найден"})
-    return _item(req, True)
+    return {**_item(req, True), "server_time": datetime.now(UTC).isoformat()}
 
 
 @router.post("/requests/{request_id}/decision")

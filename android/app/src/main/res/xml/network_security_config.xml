@@ -1,7 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Рабочая сборка: только HTTPS и только системные центры сертификации (пользовательские CA для фактора аутентификации не принимаются). -->
-<network-security-config>
-    <base-config cleartextTrafficPermitted="false">
+<!--
+  Рабочая сборка. HTTP разрешён: первичная установка сервера MFA Gate идёт по http://IP:порт, и телефон должен привязаться к нему.
+  Защита на уровне приложения: адрес http:// при привязке показывается с предупреждением и требует явного подтверждения,
+  в списке серверов помечается «без шифрования». Доверие для HTTPS — только системные центры сертификации:
+  пользовательские CA для фактора аутентификации не принимаются.
+-->
+<network-security-config xmlns:tools="http://schemas.android.com/tools">
+    <base-config cleartextTrafficPermitted="true" tools:ignore="InsecureBaseConfiguration">
         <trust-anchors>
             <certificates src="system" />
         </trust-anchors>

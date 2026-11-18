@@ -12,5 +12,5 @@ dependencyResolutionManagement {
         mavenCentral()
     }
 }
-rootProject.name = "twofold-android"
+rootProject.name = "mfa-gate-android"
 include(":app")

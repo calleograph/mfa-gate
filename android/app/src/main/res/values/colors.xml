@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="launcher_bg">#16191D</color>
-    <color name="window_bg">#F5F6F7</color>
+    <!-- Совпадают с токенами ui/theme/Theme.kt (тема «Стекло»): окно до первого кадра Compose того же цвета, что и фон. -->
+    <color name="launcher_bg">#2563EB</color>
+    <color name="window_bg">#EAF2FD</color>
 </resources>

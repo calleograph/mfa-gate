@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Только отладочная сборка: тестовый стенд по HTTP и сертификаты пользовательских CA. В рабочей сборке открытый HTTP запрещён целиком. -->
-<network-security-config>
-    <base-config cleartextTrafficPermitted="true">
+<!-- Только отладочная сборка: дополнительно доверяет сертификатам пользовательских CA (тестовый стенд с самоподписанным HTTPS). -->
+<network-security-config xmlns:tools="http://schemas.android.com/tools">
+    <base-config cleartextTrafficPermitted="true" tools:ignore="InsecureBaseConfiguration,AcceptsUserCertificates">
         <trust-anchors>
             <certificates src="system" />
             <certificates src="user" />
