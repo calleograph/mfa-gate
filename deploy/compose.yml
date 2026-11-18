@@ -24,7 +24,7 @@ x-app: &app
   secrets: [master_key]
   networks: [backend]
   environment: &env
-    MFA_GATE_DATABASE_URL: postgresql+asyncpg://mfa-gate:${POSTGRES_PASSWORD:?}@postgres:5432/mfa-gate
+    MFA_GATE_DATABASE_URL: postgresql+asyncpg://mfagate:${POSTGRES_PASSWORD:?}@postgres:5432/mfagate
     MFA_GATE_MASTER_KEY_FILE: /run/secrets/master_key
     MFA_GATE_PUBLIC_URL: ${MFA_GATE_PUBLIC_URL:?}
     MFA_GATE_SERVER_NAME: ${MFA_GATE_SERVER_NAME:-MFA Gate}
