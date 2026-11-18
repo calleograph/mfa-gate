@@ -96,15 +96,19 @@ async def _has_superadmin() -> bool:
 
 
 def cmd_create_admin(args) -> None:
-    if args.if_no_admin and asyncio.run(_has_superadmin()):
-        print("главный администратор уже есть — пропущено")
-        return
     password = args.password_stdin and sys.stdin.readline().strip()
     generated = not password
     password = password or secrets.token_urlsafe(18)
     if len(password) < 12:
         raise SystemExit("пароль короче 12 символов")
-    asyncio.run(_create_admin(args.login.strip().lower(), password, args.name or args.login, temporary=args.temporary))
+    async def flow() -> bool:   # одним asyncio.run: пул соединений привязан к циклу событий
+        if args.if_no_admin and await _has_superadmin():
+            return False
+        await _create_admin(args.login.strip().lower(), password, args.name or args.login, temporary=args.temporary)
+        return True
+    if not asyncio.run(flow()):
+        print("главный администратор уже есть — пропущено")
+        return
     print(f"главный администратор {args.login} создан")
     if generated:
         print(f"пароль (показывается один раз): {password}")
