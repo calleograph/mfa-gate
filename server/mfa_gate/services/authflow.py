@@ -204,7 +204,8 @@ async def begin(session: AsyncSession, *, login: str, password: str | None, reso
                 client_name: str = "", source_ip: str | None = None, nas_ip: str | None = None, otp: str | None = None,
                 api_client_id: uuid.UUID | None = None) -> Outcome:
     """Новая попытка входа. password=None — первый фактор уже проверен шлюзом (режим «только второй фактор» REST API)."""
-    req = AuthRequest(login=login.strip().lower(), channel=channel, client_name=client_name, source_ip=source_ip, nas_ip=nas_ip,
+    # id задаётся сразу: ответ (в том числе отказ) ссылается на транзакцию до записи в БД
+    req = AuthRequest(id=uuid.uuid4(), login=login.strip().lower(), channel=channel, client_name=client_name, source_ip=source_ip, nas_ip=nas_ip,
                       resource_id=resource.id if resource else None, resource_name=resource.name if resource else "", status="pending",
                       api_client_id=api_client_id)
 

@@ -1,5 +1,5 @@
 // Компоненты интерфейса без фреймворка. Текст пользователя всегда идёт через textContent, innerHTML не используется.
-import { ApiError } from './api.js';
+import { ApiError, post } from './api.js';
 
 const SPRITE = '/assets/icons/sprite.svg';
 const SVG = 'http://www.w3.org/2000/svg';
@@ -43,17 +43,18 @@ export function icon(name, cls = '') {
   return svg;
 }
 
+// Знак MFA Gate: плитка с градиентом темы (CSS .mark), внутри — проём ворот с замочной скважиной. Тот же рисунок — в favicon.svg.
 export function brandMark(cls = 'mark') {
   const svg = document.createElementNS(SVG, 'svg');
-  svg.setAttribute('class', cls);
-  svg.setAttribute('viewBox', '0 0 32 32');
+  svg.setAttribute('viewBox', '0 0 24 24');
   svg.setAttribute('aria-hidden', 'true');
-  const a = document.createElementNS(SVG, 'rect');
-  Object.entries({ x: 2, y: 2, width: 18, height: 18, rx: 4, class: 'm-a' }).forEach(([k, v]) => a.setAttribute(k, v));
-  const b = document.createElementNS(SVG, 'rect');
-  Object.entries({ x: 12, y: 12, width: 18, height: 18, rx: 4, class: 'm-b' }).forEach(([k, v]) => b.setAttribute(k, v));
-  svg.append(a, b);
-  return svg;
+  svg.setAttribute('focusable', 'false');
+  const gate = document.createElementNS(SVG, 'path');
+  gate.setAttribute('d', 'M6 20V10a6 6 0 0 1 12 0v10M3.5 20h17M12 12.5V16');
+  const key = document.createElementNS(SVG, 'circle');
+  Object.entries({ cx: 12, cy: 11, r: 2, class: 'm-k' }).forEach(([k, v]) => key.setAttribute(k, v));
+  svg.append(gate, key);
+  return h('span', { class: cls, 'aria-hidden': 'true' }, svg);
 }
 
 // ------------------------------------------------------------------ форматирование
@@ -183,17 +184,38 @@ export function notice(s, text, extra) {
 }
 
 // ------------------------------------------------------------------ копирование
-export async function copyText(text) {
-  try { await navigator.clipboard.writeText(text); }
-  catch {
-    const ta = h('textarea', { class: 'sr-only', 'aria-hidden': 'true' });
-    ta.value = text; document.body.append(ta); ta.select();
-    try { document.execCommand('copy'); } finally { ta.remove(); }
+// Панель открывают и по HTTP (первичная установка по IP): там navigator.clipboard нет — он требует secure context.
+// Запасной путь — выделение и execCommand('copy'); если и он не сработал, видимый текст остаётся выделенным с подсказкой.
+export async function copyText(text, source) {
+  // у поля секрета — подсказка рядом (тост не виден поверх модального окна), иначе тост
+  const boxEl = source?.closest('.secret-box');
+  const say = (msg, s = 'ok') => {
+    if (!boxEl) return toast(msg, s);
+    let note = boxEl.nextElementSibling?.classList.contains('copy-note') ? boxEl.nextElementSibling : null;
+    if (!note) { note = h('p', { class: 'copy-note', role: 'status' }); boxEl.after(note); }
+    note.dataset.s = s;
+    note.textContent = msg;
+  };
+  if (window.isSecureContext && navigator.clipboard) {
+    try { await navigator.clipboard.writeText(text); say('Скопировано в буфер обмена'); return true; } catch { /* нет разрешения — запасной путь */ }
   }
-  toast('Скопировано в буфер обмена');
+  // при открытом <dialog> всё снаружи инертно: временное поле кладём в само окно, иначе выделение не сработает
+  const host = source?.closest('dialog[open]') || document.querySelector('dialog[open]') || document.body;
+  const ta = h('textarea', { class: 'sr-only', readonly: true, tabindex: '-1', 'aria-hidden': 'true' });
+  ta.value = text;
+  host.append(ta);
+  ta.select();
+  let ok = false;
+  try { ok = document.execCommand('copy'); } catch { ok = false; } finally { ta.remove(); }
+  source?.focus();
+  if (ok) { say('Скопировано в буфер обмена'); return true; }
+  const code = boxEl?.querySelector('code');
+  if (code) { const r = document.createRange(); r.selectNodeContents(code); const sel = getSelection(); sel.removeAllRanges(); sel.addRange(r); }
+  say('Скопируйте вручную: браузер не дал доступа к буферу обмена. ' + (code ? 'Текст выделен — нажмите Ctrl+C (⌘C).' : ''), 'warning');
+  return false;
 }
 export const secretBox = (value, label = 'Скопировать') =>
-  h('div', { class: 'secret-box' }, h('code', { text: value }), iconButton('copy', label, () => copyText(value)));
+  h('div', { class: 'secret-box' }, h('code', { text: value }), iconButton('copy', label, (e) => copyText(value, e.currentTarget)));
 
 // Секрет показывается один раз: закрыть можно только явной кнопкой
 export function secretDialog({ title, intro, items, warning = 'Секрет показывается один раз. После закрытия окна его нельзя будет посмотреть снова — только выпустить новый.' }) {
@@ -218,9 +240,11 @@ export function qrImage(svg, alt) {
 // ------------------------------------------------------------------ меню действий (клавиатура, Escape, клик вне)
 let openMenu = null;
 document.addEventListener('mousedown', (e) => { if (openMenu && !openMenu.wrap.contains(e.target)) openMenu.close(false); });
-export function actionMenu(items, label = 'Действия') {
+// trigger — своя кнопка вместо «⋯» (меню профиля); подпись у неё своя, aria-атрибуты меню добавляются здесь
+export function actionMenu(items, label = 'Действия', trigger = null) {
   const id = 'mn' + Math.random().toString(36).slice(2, 8);
-  const trigger = h('button', { class: 'icon-btn', type: 'button', 'aria-haspopup': 'menu', 'aria-expanded': 'false', 'aria-controls': id, 'aria-label': label, title: label }, icon('ellipsis'));
+  if (trigger) { trigger.type = 'button'; trigger.setAttribute('aria-haspopup', 'menu'); trigger.setAttribute('aria-expanded', 'false'); trigger.setAttribute('aria-controls', id); }
+  else trigger = h('button', { class: 'icon-btn', type: 'button', 'aria-haspopup': 'menu', 'aria-expanded': 'false', 'aria-controls': id, 'aria-label': label, title: label }, icon('ellipsis'));
   const wrap = h('div', { class: 'menu-wrap' }, trigger);
   let menu = null;
   const api = {
@@ -512,6 +536,26 @@ export function formDialog({ title, subtitle, fields, values, submitLabel = 'С�
   });
   onReady?.(f, m);
   return { ...m, form: f };
+}
+
+// ------------------------------------------------------------------ смена своего пароля (экран временного пароля и окно из меню профиля)
+export const PASSWORD_FIELDS = [
+  { name: 'current_password', label: 'Текущий пароль', type: 'password', autocomplete: 'current-password', required: true, trim: false },
+  { name: 'new_password', label: 'Новый пароль', type: 'password', autocomplete: 'new-password', required: true, trim: false, hint: 'Не короче 12 символов и не совпадает с текущим.' },
+  { name: 'new_password_repeat', label: 'Повторите новый пароль', type: 'password', autocomplete: 'new-password', required: true, trim: false },
+];
+export function passwordErrors(v) {
+  if (v.new_password.length < 12) return [{ field: 'new_password', message: 'Минимум 12 символов' }];
+  if (v.new_password_repeat !== v.new_password) return [{ field: 'new_password_repeat', message: 'Пароли не совпадают' }];
+  return [];
+}
+// bad_password и same_password приходят без fields — показываем их у своих полей
+export async function changePassword(v) {
+  try { return await post('/auth/password', { current_password: v.current_password, new_password: v.new_password }); } catch (err) {
+    if (err.code === 'bad_password') err.fields = [{ field: 'current_password', message: err.message }];
+    else if (err.code === 'same_password') err.fields = [{ field: 'new_password', message: err.message }];
+    throw err;
+  }
 }
 
 // ------------------------------------------------------------------ заголовок страницы

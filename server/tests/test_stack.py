@@ -351,6 +351,13 @@ def test_revoked_device_cannot_poll(ctx):
     assert resp.status_code == 401 and resp.json()["code"] == "device_revoked"
 
 
+def test_rest_access_request_rejected_returns_result(ctx):
+    """Отказ по REST API — обычный ответ со статусом rejected, а не ошибка сервера."""
+    resp = ctx.api.post("/api/v1/access-requests", json={"login": f"alice-{RUN}", "password": "wrong-password", "resource_id": ctx.resource["id"]})
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["status"] == "rejected" and resp.json()["id"]
+
+
 def test_resource_bound_key_cannot_switch_resource(ctx):
     other = ctx.ok(ctx.api.post("/api/v1/resources", json={"name": f"Other {RUN}"}), 201)
     key = ctx.ok(ctx.api.post("/api/v1/api-clients", json={"name": f"bound-{RUN}", "scopes": ["auth:write"],

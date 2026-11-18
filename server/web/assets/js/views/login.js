@@ -1,6 +1,6 @@
 // Вход администратора: пароль → второй фактор (push с живым ожиданием, TOTP-код) или первичное подключение TOTP.
 import { api, post, setCsrf } from '../api.js';
-import { h, icon, brandMark, button, busy, notice, qrImage, secretBox, clear, fill } from '../ui.js';
+import { h, brandMark, button, busy, notice, qrImage, secretBox, clear, fill, form, PASSWORD_FIELDS, passwordErrors, changePassword } from '../ui.js';
 
 export function renderLogin(root, { onDone, message, themeSwitch }) {
   let stop = () => {};
@@ -47,7 +47,8 @@ export function renderLogin(root, { onDone, message, themeSwitch }) {
         try {
           const res = await post('/auth/login', { login: login.value.trim(), password: pass.value });
           setCsrf(res.csrf);
-          if (res.next === 'totp_setup') setupStep(); else mfaStep(res.methods || []);
+          if (res.next === 'password_change') passwordChangeStep(login.value.trim(), pass.value);
+          else if (res.next === 'totp_setup') setupStep(); else mfaStep(res.methods || []);
         } catch (err) {
           errBox.append(notice('error', err.message));
           pass.value = '';
@@ -57,6 +58,42 @@ export function renderLogin(root, { onDone, message, themeSwitch }) {
     });
     fill(stage, ...head('Вход в панель управления', 'Доступ только для администраторов MFA Gate.'), frm);
     login.focus();
+  }
+
+  // -------------------------------------------------------------- шаг 1б: смена временного пароля (первый администратор от установщика)
+  function passwordChangeStep(userLogin = '', current = '') {
+    stop();
+    setStep(1);
+    document.title = 'Смена пароля — MFA Gate';
+    const f = form(PASSWORD_FIELDS, { current_password: current });
+    const errBox = h('div', { 'aria-live': 'polite' });
+    const submit = button('Сменить пароль и продолжить', { kind: 'primary', type: 'submit' });
+    // логин рядом с новым паролем — чтобы менеджер паролей сохранил пару
+    const frm = h('form', { class: 'auth-panel', novalidate: true },
+      h('input', { class: 'sr-only', type: 'text', name: 'username', autocomplete: 'username', value: userLogin, readonly: true, tabindex: '-1', 'aria-hidden': 'true' }),
+      f.el, errBox, submit);
+    frm.addEventListener('submit', (e) => {
+      e.preventDefault();
+      clear(errBox);
+      f.clearErrors();
+      const v = f.values();
+      const missing = PASSWORD_FIELDS.filter((x) => !v[x.name]).map((x) => ({ field: x.name, message: 'Обязательное поле' }));
+      const bad = missing.length ? missing : passwordErrors(v);
+      if (bad.length) { f.setErrors(bad); return; }
+      busy(submit, async () => {
+        try {
+          const res = await changePassword(v);
+          setCsrf(res.csrf);
+          if (res.next === 'totp_setup') setupStep(); else mfaStep(res.methods || []);
+        } catch (err) {
+          if (err.status === 401) return sessionLost(err);
+          const rest = err.fields?.length ? f.setErrors(err.fields) : [];
+          if (!err.fields?.length || rest.length) errBox.append(notice('error', [err.message, ...rest].join('. ')));
+        }
+      });
+    });
+    fill(stage, ...head('Смените временный пароль', 'Этот пароль выдан при установке и годится только для первого входа. Придумайте свой — затем подключите второй фактор.'), frm);
+    (current ? f.controls.new_password : f.controls.current_password).focus();
   }
 
   // -------------------------------------------------------------- шаг 2: второй фактор
@@ -83,6 +120,7 @@ export function renderLogin(root, { onDone, message, themeSwitch }) {
       if (value.length < 6) { errBox.append(notice('error', 'Введите код полностью')); code.focus(); return; }
       busy(submit, async () => {
         try { finish(await post('/auth/mfa', { code: value })); } catch (err) {
+          if (err.code === 'password_change_required') return passwordChangeStep();
           if (err.status === 401 && err.code !== 'invalid_otp') return sessionLost(err);
           errBox.append(notice('error', err.message));
           code.select();
@@ -155,6 +193,7 @@ export function renderLogin(root, { onDone, message, themeSwitch }) {
         }
       } catch (err) {
         if (err.name === 'AbortError') return;
+        if (err.code === 'password_change_required') return passwordChangeStep();
         if (err.status === 401) return sessionLost(err);
         fail('Не удалось отправить запрос', err.message);
       }
@@ -169,6 +208,7 @@ export function renderLogin(root, { onDone, message, themeSwitch }) {
     let data;
     try { data = await post('/auth/totp-setup'); } catch (err) {
       if (err.code === 'already_enrolled') return codeStep(['totp']);
+      if (err.code === 'password_change_required') return passwordChangeStep();
       if (err.status === 401) return sessionLost(err);
       fill(stage, ...head('Подключите второй фактор'), notice('error', err.message), button('Начать заново', { kind: 'primary', onClick: () => passwordStep() }));
       return;
@@ -189,6 +229,7 @@ export function renderLogin(root, { onDone, message, themeSwitch }) {
       if (value.length < 6) { errBox.append(notice('error', 'Введите шесть цифр из приложения')); code.focus(); return; }
       busy(submit, async () => {
         try { finish(await post(`/auth/totp-setup/${encodeURIComponent(data.factor_id)}`, { code: value })); } catch (err) {
+          if (err.code === 'password_change_required') return passwordChangeStep();
           if (err.status === 401) return sessionLost(err);
           errBox.append(notice('error', err.message));
           code.select();

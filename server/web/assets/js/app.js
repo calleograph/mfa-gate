@@ -1,6 +1,6 @@
 // Точка входа: сессия, оболочка, хэш-роутинг (#/users/<id>), права разделов.
 import { get, post, setCsrf, onSessionLost } from './api.js';
-import { h, icon, brandMark, iconButton, button, segmented, empty, errorState, clear, toast, fill } from './ui.js';
+import { h, icon, brandMark, iconButton, button, segmented, empty, errorState, clear, toast, fill, actionMenu, formDialog, PASSWORD_FIELDS, passwordErrors, changePassword } from './ui.js';
 import { renderLogin } from './views/login.js';
 import { overview } from './views/overview.js';
 import { usersList, userCard } from './views/users.js';
@@ -105,9 +105,16 @@ function buildShell() {
     h('div', { class: 'side-head' }, h('a', { class: 'brand', href: '#/' }, brandMark(), 'MFA Gate'), closeBtn),
     nav,
     h('div', { class: 'side-foot' },
-      h('div', { class: 'who' }, h('span', { class: 'avatar', 'aria-hidden': 'true', text: initials }),
-        h('div', { class: 'who-text' }, h('div', { class: 'who-name', text: me.display_name || me.login, title: me.login }), h('div', { class: 'who-role', text: me.role_label || me.role })),
-        iconButton('log-out', 'Выйти', logout)),
+      insecureHttp() ? h('a', { class: 'http-note', href: HTTPS_DOCS, target: '_blank', rel: 'noopener noreferrer' }, icon('lock-open'),
+        h('span', { text: 'Соединение без HTTPS — только для изолированной сети' }), h('span', { class: 'hn-more', text: 'Как включить HTTPS' })) : null,
+      actionMenu([
+        me.source === 'local' ? { label: 'Сменить пароль', icon: 'key-round', onSelect: passwordDialog } : null,
+        me.source === 'local' ? '-' : null,
+        { label: 'Выйти', icon: 'log-out', onSelect: logout },
+      ], 'Меню профиля', h('button', { class: 'who who-btn', title: `${me.display_name || me.login} (${me.login}) — меню профиля` },
+        h('span', { class: 'avatar', 'aria-hidden': 'true', text: initials }),
+        h('span', { class: 'who-text' }, h('span', { class: 'who-name', text: me.display_name || me.login }), h('span', { class: 'who-role', text: me.role_label || me.role })),
+        icon('chevron-down'))),
       h('div', { class: 'side-row' }, themeSwitch(),
         h('a', { class: 'icon-btn', href: '/api/docs', target: '_blank', rel: 'noopener noreferrer', 'aria-label': 'Документация API для интеграторов (откроется в новой вкладке)', title: 'Документация API (Swagger)' }, icon('book-open')))));
   menuBtn = iconButton('menu', 'Открыть меню', () => toggleNav(true), { 'aria-controls': 'sidebar', 'aria-expanded': 'false' });
@@ -119,6 +126,23 @@ function buildShell() {
   shell.addEventListener('keydown', (e) => { if (e.key === 'Escape' && shell.classList.contains('nav-open')) { toggleNav(false); } });
   fill(app, shell);
   app.removeAttribute('aria-busy');
+}
+
+// Первичная установка открывается по http://IP:порт. Петлевой адрес (SSH-туннель) не предупреждаем: трафик не выходит в сеть.
+const HTTPS_DOCS = 'https://github.com/calleograph/mfa-gate#https';
+const insecureHttp = () => location.protocol === 'http:' && !/^(localhost|127(\.\d{1,3}){3}|\[::1\])$/.test(location.hostname);
+
+function passwordDialog() {
+  formDialog({
+    title: 'Смена пароля', subtitle: 'Остальные сеансы этой учётной записи завершатся. Текущий останется открытым.',
+    fields: PASSWORD_FIELDS, submitLabel: 'Сменить пароль', size: 'sm',
+    async onSubmit(v, f) {
+      const bad = passwordErrors(v);
+      if (bad.length) { f.setErrors(bad); return false; }
+      await changePassword(v);
+      toast('Пароль изменён. Другие сеансы этой учётной записи завершены.');
+    },
+  });
 }
 
 function toggleNav(open) {
