@@ -49,7 +49,8 @@ if "$CTL" install >/dev/null; then ok "повторный install идемпот
 
 KEY="$(dc exec -T api python -m mfa_gate create-api-client e2e --scopes all | tail -n1)"
 ADMIN_PW="$(openssl rand -hex 12)"
-echo "$ADMIN_PW" | dc exec -T api python -m mfa_gate create-admin e2e-root --password-stdin >/dev/null
+echo "$ADMIN_PW" | dc exec -T api python -m mfa_gate create-admin e2e-root --temporary --password-stdin >/dev/null
+if "$CTL" admin-init 2>&1 | grep -q "пропущено"; then ok "admin-init не трогает существующего администратора"; else bad "admin-init при наличии администратора"; fi
 SUBNET="$(docker network inspect "${NAME}_backend" -f '{{(index .IPAM.Config 0).Gateway}}')/32"
 
 step "сквозные тесты (RADIUS → push → подтверждение)"

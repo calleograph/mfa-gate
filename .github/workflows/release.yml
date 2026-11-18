@@ -43,13 +43,13 @@ jobs:
       - uses: actions/checkout@v4
       - id: name
         run: echo "image=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/mfa-gate" >> "$GITHUB_OUTPUT"   # ghcr требует нижний регистр
-      - uses: docker/setup-buildx-action@v3
-      - uses: docker/login-action@v3
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - uses: docker/build-push-action@v6
+      - uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
         with:
           context: server
           push: true
@@ -66,21 +66,21 @@ jobs:
     needs: [verify, checks]
     runs-on: ubuntu-latest
     timeout-minutes: 45
-    env:
-      MFA_GATE_KEYSTORE_B64: ${{ secrets.MFA_GATE_KEYSTORE_B64 }}
-      MFA_GATE_KEYSTORE_PASSWORD: ${{ secrets.MFA_GATE_KEYSTORE_PASSWORD }}
-      MFA_GATE_KEY_ALIAS: ${{ secrets.MFA_GATE_KEY_ALIAS }}
-      MFA_GATE_KEY_PASSWORD: ${{ secrets.MFA_GATE_KEY_PASSWORD }}
     steps:
       - name: Секреты подписи
         id: signing
+        env:   # только наличие: сами значения видны лишь шагу сборки
+          HAS_KS: ${{ secrets.MFA_GATE_KEYSTORE_B64 != '' }}
+          HAS_KSP: ${{ secrets.MFA_GATE_KEYSTORE_PASSWORD != '' }}
+          HAS_ALIAS: ${{ secrets.MFA_GATE_KEY_ALIAS != '' }}
+          HAS_KP: ${{ secrets.MFA_GATE_KEY_PASSWORD != '' }}
         run: |
           missing=""
-          for v in MFA_GATE_KEYSTORE_B64 MFA_GATE_KEYSTORE_PASSWORD MFA_GATE_KEY_ALIAS MFA_GATE_KEY_PASSWORD; do
-            [[ -n "${!v}" ]] || missing="$missing $v"
+          for v in HAS_KS HAS_KSP HAS_ALIAS HAS_KP; do
+            [[ "${!v}" == true ]] || missing="$missing $v"
           done
           if [[ -n "$missing" ]]; then
-            echo "::warning::нет секретов подписи:$missing — в выпуск попадут ТЕСТОВЫЕ APK с отладочной подписью (только для испытаний)"
+            echo "::warning::нет секретов подписи MFA_GATE_KEYSTORE_B64/…_PASSWORD/KEY_ALIAS/KEY_PASSWORD — APK будут подписаны одноразовым ключом, выпуск предварительный"
             echo "signed=false" >> "$GITHUB_OUTPUT"
           else
             echo "signed=true" >> "$GITHUB_OUTPUT"
@@ -90,13 +90,18 @@ jobs:
         with:
           distribution: temurin
           java-version: "21"
-      - uses: android-actions/setup-android@v3
+      - uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3
         with:
           packages: 'platform-tools'   # пакет tools удалён из SDK; платформы и build-tools AGP скачивает сам
-      - uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4
       - name: Сборка release (подписанная)
         if: steps.signing.outputs.signed == 'true'
         working-directory: android
+        env:
+          MFA_GATE_KEYSTORE_B64: ${{ secrets.MFA_GATE_KEYSTORE_B64 }}
+          MFA_GATE_KEYSTORE_PASSWORD: ${{ secrets.MFA_GATE_KEYSTORE_PASSWORD }}
+          MFA_GATE_KEY_ALIAS: ${{ secrets.MFA_GATE_KEY_ALIAS }}
+          MFA_GATE_KEY_PASSWORD: ${{ secrets.MFA_GATE_KEY_PASSWORD }}
         run: |
           umask 077
           printf '%s' "$MFA_GATE_KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/release.jks"
@@ -114,15 +119,23 @@ jobs:
             if grep -q 'CN=Android Debug' <<<"$certs"; then echo "::error::$apk подписан отладочным ключом"; exit 1; fi
             cp "$apk" "dist/mfa-gate-authenticator-${{ needs.verify.outputs.version }}-$flavor.apk"
           done
-      - name: Тестовые APK (без секретов подписи)
+      - name: Тестовые APK (без секретов подписи — одноразовый ключ)
         if: steps.signing.outputs.signed != 'true'
         working-directory: android
         run: |
-          ./gradlew --no-daemon :app:assembleFossDebug :app:assembleGmsDebug
+          # release-сборка (не debuggable, только системные CA), подписанная ключом, который создаётся здесь и сразу удаляется:
+          # обновить её поверх нельзя — для постоянного выпуска задайте секреты подписи
+          umask 077
+          export MFA_GATE_KEYSTORE="$RUNNER_TEMP/ephemeral.jks" MFA_GATE_KEY_ALIAS=test
+          export MFA_GATE_KEYSTORE_PASSWORD="$(openssl rand -hex 16)"; export MFA_GATE_KEY_PASSWORD="$MFA_GATE_KEYSTORE_PASSWORD"
+          keytool -genkeypair -keystore "$MFA_GATE_KEYSTORE" -storetype PKCS12 -alias test -keyalg EC -groupname secp256r1 -validity 365 \
+            -dname "CN=MFA Gate test build" -storepass "$MFA_GATE_KEYSTORE_PASSWORD" -keypass "$MFA_GATE_KEY_PASSWORD"
+          ./gradlew --no-daemon :app:assembleFossRelease :app:assembleGmsRelease
+          rm -f "$MFA_GATE_KEYSTORE"
           mkdir -p ../dist
           for flavor in foss gms; do
-            cp "$(ls app/build/outputs/apk/$flavor/debug/*.apk | head -n1)" \
-              "../dist/mfa-gate-authenticator-${{ needs.verify.outputs.version }}-$flavor-TEST-debug-signed.apk"
+            cp "$(ls app/build/outputs/apk/$flavor/release/*.apk | head -n1)" \
+              "../dist/mfa-gate-authenticator-${{ needs.verify.outputs.version }}-$flavor-TEST.apk"
           done
       - uses: actions/upload-artifact@v4
         with:
@@ -152,7 +165,9 @@ jobs:
           awk -v v="## [$VERSION]" 'index($0, v) == 1 {on=1; next} on && /^## \[/ {exit} on' CHANGELOG.md > notes.md
           [[ -s notes.md ]] || echo "Выпуск $VERSION" > notes.md
           printf '\nОбраз сервера: `ghcr.io/%s/mfa-gate:%s`\n' "${GITHUB_REPOSITORY_OWNER,,}" "$VERSION" >> notes.md
-          if ls dist/*TEST-debug-signed.apk >/dev/null 2>&1; then
-            printf '\n> **APK в этом выпуске — тестовые, подписаны отладочным ключом.** Годятся для испытаний; обновление поверх них подписанной версией потребует переустановки приложения.\n' >> notes.md
+          prerelease=""
+          if ls dist/*-TEST.apk >/dev/null 2>&1; then
+            prerelease="--prerelease"
+            printf '\n> **APK в этом выпуске — тестовые:** подписаны одноразовым ключом сборки. Для испытаний; следующую версию поверх них установить не получится — потребуется переустановка приложения и повторная привязка.\n' >> notes.md
           fi
-          gh release create "$GITHUB_REF_NAME" dist/*.apk dist/SHA256SUMS --title "MFA Gate $VERSION" --notes-file notes.md --verify-tag
+          gh release create "$GITHUB_REF_NAME" dist/*.apk dist/SHA256SUMS --title "MFA Gate $VERSION" --notes-file notes.md --verify-tag $prerelease

@@ -122,3 +122,21 @@ def test_env_example_is_valid_shell():
     res = subprocess.run(["bash", "-c", f'set -euo pipefail; set -a; . "{env}"; echo "$MFA_GATE_SERVER_NAME"'], capture_output=True, text=True)
     assert res.returncode == 0 and res.stderr == "", res.stderr
     assert res.stdout.strip() == "MFA Gate"
+
+
+def test_default_gateway_from_proc_route():
+    from mfa_gate.api.deps import default_gateway
+    table = ("Iface\tDestination\tGateway \tFlags\tRefCnt\tUse\tMetric\tMask\t\tMTU\tWindow\tIRTT\n"
+             "eth0\t00000000\t010012AC\t0003\t0\t0\t0\t00000000\t0\t0\t0\n"
+             "eth0\t000012AC\t00000000\t0001\t0\t0\t0\t0000FFFF\t0\t0\t0\n")
+    assert default_gateway(table) == "172.18.0.1"
+    assert default_gateway(table.splitlines()[0]) is None
+
+
+def test_compose_database_url_matches_postgres_service():
+    """Строка подключения приложения и учётная запись сервиса postgres в compose.yml должны совпадать."""
+    import re
+    from pathlib import Path
+    compose = (Path(__file__).resolve().parents[2] / "deploy" / "compose.yml").read_text()
+    user, db = re.search(r"postgresql\+asyncpg://([^:]+):\$\{POSTGRES_PASSWORD:\?\}@postgres:5432/(\S+)", compose).groups()
+    assert f"POSTGRES_USER: {user}" in compose and f"POSTGRES_DB: {db}" in compose

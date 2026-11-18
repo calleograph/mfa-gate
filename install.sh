@@ -40,6 +40,12 @@ if [[ $EUID -ne 0 ]]; then
   exit 1
 fi
 mkdir -p "$LOG_DIR" && chmod 700 "$LOG_DIR" && : > "$LOG" && chmod 600 "$LOG"
+# root будет запускать скрипты и читать конфигурацию из этого каталога: менять их должен только root
+if [[ "$(stat -c %u "$ROOT")" != 0 ]] || find "$ROOT" -path "$ROOT/.git" -prune -o -perm /022 -print -quit 2>/dev/null | grep -q .; then
+  chown -R root:root "$ROOT" && chmod -R go-w "$ROOT"
+  echo "каталог $ROOT передан root (иначе обычный пользователь мог бы подменить скрипты, которые выполняются от root)."
+  echo "обновление исходников теперь: sudo git -C $ROOT pull"
+fi
 bold "MFA Gate $PRODUCT_VERSION — установка All-in-One"
 echo "журнал: $LOG"
 
@@ -77,9 +83,10 @@ if ! command -v docker >/dev/null; then
   run apt-get update -q
   if ! run env DEBIAN_FRONTEND=noninteractive apt-get install -y -q docker.io docker-compose-v2; then
     info "пакеты дистрибутива недоступны — установка официальным скриптом get.docker.com"
-    curl -fsSL https://get.docker.com -o /tmp/get-docker.sh >> "$LOG" 2>&1 || fail "не удалось скачать установщик Docker" "проверьте доступ к get.docker.com"
-    run sh /tmp/get-docker.sh || fail "установка Docker не удалась" "см. журнал; можно установить Docker вручную: https://docs.docker.com/engine/install/"
-    rm -f /tmp/get-docker.sh
+    getdocker="$(mktemp)"
+    curl -fsSL https://get.docker.com -o "$getdocker" >> "$LOG" 2>&1 || fail "не удалось скачать установщик Docker" "проверьте доступ к get.docker.com"
+    run sh "$getdocker" || fail "установка Docker не удалась" "см. журнал; можно установить Docker вручную: https://docs.docker.com/engine/install/"
+    rm -f "$getdocker"
   fi
 fi
 run systemctl enable --now docker || true

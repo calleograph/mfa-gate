@@ -246,7 +246,10 @@ cmd_uninstall() {   # uninstall [--purge] — остановить и удали
     read -r -p "Удалить ВСЕ данные MFA Gate ($DATA, $BACKUPS) без возможности восстановления? Введите DELETE: " answer
     [[ "$answer" == DELETE ]] || die "отменено"
     dc down -v --remove-orphans
-    docker run --rm -v "$DATA:/d" -v "$BACKUPS:/b" alpine:3 sh -c 'rm -rf /d/* /b/*' >/dev/null 2>&1 || true
+    # файлы базы принадлежат пользователю контейнера postgres; удаляем через образ postgres (он уже есть локально)
+    docker run --rm -v "$DATA:/d" -v "$BACKUPS:/b" postgres:16-alpine find /d /b -mindepth 1 -delete \
+      || die "данные удалить не удалось — проверьте вручную $DATA и $BACKUPS"
+    [[ -z "$(ls -A "$DATA" 2>/dev/null)" && -z "$(ls -A "$BACKUPS" 2>/dev/null)" ]] || die "в $DATA или $BACKUPS остались файлы"
     rm -f "$ENV_FILE"
     say "MFA Gate удалён вместе с данными"
   else

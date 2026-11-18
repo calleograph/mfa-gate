@@ -72,10 +72,10 @@ jobs:
         with:
           distribution: temurin
           java-version: "21"
-      - uses: android-actions/setup-android@v3
+      - uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3
         with:
           packages: 'platform-tools'   # пакет tools удалён из SDK; платформы и build-tools AGP скачивает сам
-      - uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4
       - name: Тесты и отладочные APK
         working-directory: android
         run: ./gradlew --no-daemon :app:testFossDebugUnitTest :app:assembleFossDebug :app:assembleGmsDebug

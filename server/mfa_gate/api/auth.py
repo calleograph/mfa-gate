@@ -144,8 +144,15 @@ async def mfa(body: CodeIn, request: Request, session: AsyncSession = Depends(ge
 
 @router.post("/auth/mfa/push")
 async def mfa_push(request: Request, session: AsyncSession = Depends(get_session)):
+    await login_limiter.check(session, client_ip(request))
     row, user = await _pending_session(request, session)
     _require_password_changed(user)
+    if user.locked_until and user.locked_until > datetime.now(UTC):
+        raise HTTPException(401, {"code": "locked", "message": "Слишком много ошибок, вход временно заблокирован"})
+    open_req = await session.scalar(select(AuthRequest).where(
+        AuthRequest.session_ref == row.id, AuthRequest.status == "pending", AuthRequest.expires_at > datetime.now(UTC)).limit(1))
+    if open_req is not None:   # не плодим push: пока открыт запрос этой сессии, возвращаем его
+        return {"request_id": str(open_req.id), "expires_at": open_req.expires_at.isoformat()}
     devices = (await session.scalars(select(Device).where(Device.user_id == user.id, Device.status == "active"))).all()
     if not devices:
         raise HTTPException(400, {"code": "no_factor", "message": "Нет привязанных устройств"})
@@ -177,9 +184,11 @@ async def mfa_push_status(request_id: uuid.UUID, request: Request, wait: int = Q
 async def _require_no_factor(session: AsyncSession, user: User) -> None:
     """Первичная настройка в сессии «только пароль» допустима, лишь пока у администратора нет НИ ОДНОГО фактора —
     иначе знание пароля позволило бы подменить второй фактор (например, у входящего только через телефон)."""
+    # учитываются и отозванные устройства: иначе отвязка телефона по device_secret + пароль открыли бы подмену фактора
     if (await session.scalar(select(TotpFactor.id).where(TotpFactor.user_id == user.id, TotpFactor.status == "active").limit(1))
-            or await session.scalar(select(Device.id).where(Device.user_id == user.id, Device.status == "active").limit(1))):
-        raise HTTPException(409, {"code": "already_enrolled", "message": "Второй фактор уже подключён — войдите с ним"})
+            or await session.scalar(select(Device.id).where(Device.user_id == user.id).limit(1))):
+        raise HTTPException(409, {"code": "already_enrolled", "message": "Второй фактор уже подключался — войдите с ним; "
+                                  "если телефон утерян, нужен аварийный код (mfagatectl emergency) или главный администратор"})
 
 
 @router.post("/auth/totp-setup")

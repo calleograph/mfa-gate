@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# OpenVPN → MFA Gate без RADIUS: auth-user-pass-verify с отложенной проверкой (OpenVPN 2.4+).
+# OpenVPN → MFA Gate без RADIUS: auth-user-pass-verify с отложенной проверкой (OpenVPN 2.5+: отложенный ответ скрипта через auth_control_file).
 #
 # server.conf:
 #   script-security 2
@@ -8,7 +8,9 @@
 #   reneg-sec 0
 #   # ввод кода TOTP в клиенте (необязательно): static-challenge "Код MFA (пусто — подтверждение на телефоне)" 1
 #
-# /etc/openvpn/mfa-gate.conf (владелец root, права 600):
+# /etc/openvpn/mfa-gate.conf — читается от имени пользователя OpenVPN (user nobody / openvpn после понижения прав):
+#   chown root:nogroup /etc/openvpn/mfa-gate.conf && chmod 640 /etc/openvpn/mfa-gate.conf   (группа — та, что в «group» server.conf)
+# Содержимое:
 #   MFA_GATE_URL=http://192.0.2.10:8080
 #   MFA_GATE_KEY=tf_xxxxxxxx:секрет          # ключ API-клиента с правом auth:write, привязанный к ресурсу VPN
 #   MFA_GATE_WAIT=50                          # сколько ждать подтверждения на телефоне, секунд
@@ -23,7 +25,7 @@ CONF="${MFA_GATE_OPENVPN_CONF:-/etc/openvpn/mfa-gate.conf}"
 : "${MFA_GATE_URL:?не задан MFA_GATE_URL в $CONF}" "${MFA_GATE_KEY:?не задан MFA_GATE_KEY в $CONF}"
 WAIT="${MFA_GATE_WAIT:-50}"
 CREDS_FILE="$1"
-CONTROL_FILE="${auth_control_file:?OpenVPN не передал auth_control_file (нужен OpenVPN 2.4+ и via-file)}"
+CONTROL_FILE="${auth_control_file:?OpenVPN не передал auth_control_file (нужен OpenVPN 2.5+ и via-file)}"
 
 USERNAME="$(sed -n '1p' "$CREDS_FILE")"
 PASSWORD="$(sed -n '2p' "$CREDS_FILE")"

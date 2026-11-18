@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import base64
 import ipaddress
+import os
 import uuid
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
@@ -36,9 +37,28 @@ def allowed(perms: set[str], need: str) -> bool:
     return "*" in perms or need in perms
 
 
+def default_gateway(route_table: str) -> str | None:
+    """Шлюз по умолчанию из /proc/net/route (в контейнере это шлюз сети Docker, через который приходят опубликованные порты)."""
+    for line in route_table.splitlines()[1:]:
+        f = line.split()
+        if len(f) > 2 and f[1] == "00000000" and f[2] != "00000000":
+            return str(ipaddress.IPv4Address(int(f[2], 16).to_bytes(4, "little")))
+    return None
+
+
 @lru_cache
 def _trusted() -> list:
-    return [ipaddress.ip_network(n.strip(), strict=False) for n in settings().trusted_proxies.split(",") if n.strip()]
+    """auto — loopback и шлюз сети контейнера: reverse proxy на этом же хосте доверенный, узлы локальной сети — нет."""
+    items = [n.strip() for n in settings().trusted_proxies.split(",") if n.strip()]
+    if "auto" in items:
+        items = [i for i in items if i != "auto"] + ["127.0.0.1/32", "::1/128"]
+        try:   # шлюз доверенный только в контейнере; на «голом» сервере шлюз по умолчанию — роутер сети, ему доверять нельзя
+            gw = default_gateway(open("/proc/net/route").read()) if os.path.exists("/.dockerenv") else None
+            if gw:
+                items.append(f"{gw}/32")
+        except OSError:
+            pass
+    return [ipaddress.ip_network(n, strict=False) for n in items]
 
 
 def client_ip(request: Request) -> str:
@@ -47,7 +67,8 @@ def client_ip(request: Request) -> str:
         if any(ipaddress.ip_address(peer) in net for net in _trusted()):
             forwarded = request.headers.get("x-forwarded-for", "")
             if forwarded:
-                return forwarded.split(",")[-1].strip()   # последний адрес добавлен нашим прокси
+                last = forwarded.split(",")[-1].strip()   # последний адрес добавлен нашим прокси
+                return str(ipaddress.ip_address(last))     # мусор вместо адреса — ValueError, берём адрес соединения
     except ValueError:
         pass
     return peer

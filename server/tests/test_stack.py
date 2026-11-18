@@ -431,6 +431,17 @@ def test_admin_login_requires_second_factor(ctx):
     assert attacker.get(f"/api/v1/auth/mfa/push/{started['request_id']}").status_code == 404
     assert ops.get(f"/api/v1/auth/mfa/push/{started['request_id']}").json()["status"] == "consumed"
 
+    # повторный запрос push той же сессией не плодит уведомления, пока открыт прежний
+    again = httpx.Client(base_url=URL, timeout=20)
+    again.post("/api/v1/auth/login", json={"login": f"ops-{RUN}", "password": "Correct-Horse-Battery-1"})
+    first, second = again.post("/api/v1/auth/mfa/push").json(), again.post("/api/v1/auth/mfa/push").json()
+    assert first["request_id"] == second["request_id"]
+    # отвязка телефона по device_secret + пароль не открывают подмену второго фактора
+    assert ctx.dev.delete("/api/device/v1/self", headers=phone.auth).status_code == 200
+    thief = httpx.Client(base_url=URL, timeout=20)
+    assert thief.post("/api/v1/auth/login", json={"login": f"ops-{RUN}", "password": "Correct-Horse-Battery-1"}).json()["next"] == "totp_setup"
+    assert thief.post("/api/v1/auth/totp-setup").status_code == 409
+
 
 def test_diagnostics_and_audit(ctx):
     diag = ctx.ok(ctx.api.get("/api/v1/system/diagnostics"))

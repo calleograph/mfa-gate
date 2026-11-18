@@ -28,7 +28,7 @@ class Settings(BaseSettings):
     enrollment_ttl_hours: int = 24
     admin_session_minutes: int = 30
     cookie_secure: str = "auto"   # auto — Secure, если запрос пришёл по HTTPS (в том числе через reverse proxy); true | false
-    trusted_proxies: str = "127.0.0.1/32,::1/128"   # X-Forwarded-For принимается только от них
+    trusted_proxies: str = "auto"   # X-Forwarded-For/Proto принимаются только от них; auto — loopback и шлюз сети контейнера
 
     # блокировки после ошибок первого/второго фактора
     lockout_threshold: int = 8

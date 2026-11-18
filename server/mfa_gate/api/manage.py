@@ -1,6 +1,7 @@
 """Управляющий API v1: используется веб-панелью (сессия администратора) и интеграциями (ключ API со scopes)."""
 from __future__ import annotations
 
+import asyncio
 import csv
 import io
 import ipaddress
@@ -137,7 +138,7 @@ async def create_user(body: UserIn, p: Principal = Depends(need("users:write")),
     if body.source == "local":
         if not body.password:
             raise HTTPException(422, {"code": "password_required", "message": "Для локального пользователя нужен пароль (от 12 символов)"})
-        user.password_hash = hash_password(body.password)
+        user.password_hash = await asyncio.to_thread(hash_password, body.password)
     else:   # заранее заводим доменного пользователя, чтобы привязать устройство до первого входа
         from ..services import ldap as ldap_service   # noqa: PLC0415
         directories = (await session.scalars(select(LdapDirectory).where(LdapDirectory.enabled).order_by(LdapDirectory.priority))).all()
@@ -192,7 +193,7 @@ async def update_user(user_id: uuid.UUID, body: UserPatch, p: Principal = Depend
     if body.password:
         if user.source != "local":
             raise HTTPException(422, {"code": "not_local", "message": "Пароль доменного пользователя меняется в каталоге"})
-        user.password_hash = hash_password(body.password)
+        user.password_hash = await asyncio.to_thread(hash_password, body.password)
     if body.group_ids is not None:
         await _set_groups(session, user, body.group_ids)
     audit(session, "user.updated", actor=p.name, target=user.login, ip=p.ip, fields=sorted(k for k in changes if k != "password"),
