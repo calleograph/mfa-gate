@@ -15,6 +15,7 @@ import socket
 import threading
 import time
 from dataclasses import dataclass
+from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 import httpx
@@ -466,3 +467,38 @@ def test_login_rate_limit_is_shared_between_api_instances(ctx):
     for t in threads:
         t.join()
     assert codes.count(401) == 20 and codes.count(429) == 10, sorted(codes)
+
+
+def test_openvpn_script_deferred_auth(ctx, tmp_path):
+    """integrations/openvpn/mfa-gate-openvpn.sh: отложенная проверка OpenVPN через REST API (push → 1, неверный TOTP → 0)."""
+    import base64 as b64
+    import subprocess
+    script = Path(__file__).resolve().parents[2] / "integrations" / "openvpn" / "mfa-gate-openvpn.sh"
+    key = ctx.ok(ctx.api.post("/api/v1/api-clients", json={"name": f"openvpn-{RUN}", "scopes": ["auth:write"],
+                                                         "resource_id": ctx.resource["id"]}), 201)
+    conf = tmp_path / "mfa-gate.conf"
+    conf.write_text(f"MFA_GATE_URL={URL}\nMFA_GATE_KEY={key['key_id']}:{key['secret']}\nMFA_GATE_WAIT=20\n")
+
+    def run(password: str) -> Path:
+        creds, control = tmp_path / f"creds-{secrets.token_hex(2)}", tmp_path / f"control-{secrets.token_hex(2)}"
+        creds.write_text(f"alice-{RUN}\n{password}\n")
+        env = {**os.environ, "MFA_GATE_OPENVPN_CONF": str(conf), "auth_control_file": str(control), "untrusted_ip": "198.51.100.77",
+               "common_name": "laptop"}
+        assert subprocess.run([str(script), str(creds)], env=env, timeout=10).returncode == 2, "OpenVPN ждёт код 2 (отложенно)"
+        return control
+
+    control = run("Correct-Horse-Battery-1")
+    item = ctx.pending(ctx.phones["alice"])[0]
+    assert item["source_ip"] == "198.51.100.77"
+    ctx.ok(ctx.decide(ctx.phones["alice"], item, "approve"))
+    deadline = time.monotonic() + 15
+    while time.monotonic() < deadline and not control.exists():
+        time.sleep(0.3)
+    assert control.read_text().strip() == "1"
+
+    wrong = "SCRV1:" + b64.b64encode(b"Correct-Horse-Battery-1").decode() + ":" + b64.b64encode(b"000000").decode()
+    control = run(wrong)
+    deadline = time.monotonic() + 15
+    while time.monotonic() < deadline and not control.exists():
+        time.sleep(0.3)
+    assert control.read_text().strip() == "0"

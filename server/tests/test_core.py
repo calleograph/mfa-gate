@@ -112,3 +112,13 @@ async def test_unifiedpush_rejects_bad_and_foreign_urls():
             with pytest.raises(PushError) as err:
                 await provider.send(http, url, "r", "d")
             assert err.value.invalid_token
+
+
+def test_env_example_is_valid_shell():
+    """deploy/.env.example читают и docker compose, и bash (install.sh, mfagatectl): значения с пробелами — только в кавычках."""
+    import subprocess
+    from pathlib import Path
+    env = Path(__file__).resolve().parents[2] / "deploy" / ".env.example"
+    res = subprocess.run(["bash", "-c", f'set -euo pipefail; set -a; . "{env}"; echo "$MFA_GATE_SERVER_NAME"'], capture_output=True, text=True)
+    assert res.returncode == 0 and res.stderr == "", res.stderr
+    assert res.stdout.strip() == "MFA Gate"
