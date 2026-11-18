@@ -518,8 +518,9 @@ def _lookup(cfg: _Cfg, login: str) -> DirectoryUser | None:
 def _diagnose(cfg: _Cfg, login: str | None, password: str | None) -> list[dict]:
     steps: list[dict] = []
 
-    def step(name: str, ok: bool, detail: str, t0: float, host: str = "") -> bool:
-        steps.append({"step": name, "ok": ok, "detail": detail, "ms": int((time.perf_counter() - t0) * 1000), "host": host})
+    def step(name: str, ok: bool, detail: str, t0: float, host: str = "", warn: bool = False) -> bool:
+        # warn — шаг пройден, но настройка небезопасна (без шифрования или без проверки сертификата)
+        steps.append({"step": name, "ok": ok, "warn": ok and warn, "detail": detail, "ms": int((time.perf_counter() - t0) * 1000), "host": host})
         return ok
 
     healthy: list[str] = []
@@ -540,7 +541,7 @@ def _diagnose(cfg: _Cfg, login: str | None, password: str | None) -> list[dict]:
             continue
         t = time.perf_counter()
         if cfg.encryption == "none":
-            step("tls", True, "шифрование выключено (encryption=none): пароли передаются открытым текстом", t, host)
+            step("tls", True, "шифрование выключено (encryption=none): пароли передаются открытым текстом", t, host, warn=True)
         else:
             conn = Connection(_server(cfg, host), auto_bind=False, raise_exceptions=False, read_only=True, receive_timeout=cfg.timeout, auto_referrals=False)
             try:
@@ -550,7 +551,7 @@ def _diagnose(cfg: _Cfg, login: str | None, password: str | None) -> list[dict]:
                 version = conn.socket.version() if hasattr(conn.socket, "version") else "TLS"
                 trust = "без проверки сертификата (verify_tls выключен)" if not cfg.verify_tls else \
                     ("сертификат проверен по ca_cert" if cfg.ca_cert else "сертификат проверен по системному набору CA")
-                step("tls", True, f"{cfg.encryption}, {version}, {trust}", t, host)
+                step("tls", True, f"{cfg.encryption}, {version}, {trust}", t, host, warn=not cfg.verify_tls)
             except LdapError as exc:
                 step("tls", False, exc.detail, t, host)
                 continue

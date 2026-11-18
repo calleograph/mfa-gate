@@ -255,9 +255,13 @@ export async function ldapPage(ctx) {
           const v = f.values();
           const r = await post(`/ldap/${d.id}/diagnose`, { login: v.login || null, password: v.password || null });
           fill(out, 
-            notice(r.ok ? 'ok' : 'error', r.ok ? 'Все шаги пройдены — каталог готов к входу пользователей' : `Есть ошибки: ${r.steps.filter((x) => !x.ok).length} из ${r.steps.length} шагов. Подробности — в шагах с крестиком.`),
+            notice(r.ok ? (r.steps.some((x) => x.warn) ? 'warning' : 'ok') : 'error', r.ok
+              ? (r.steps.some((x) => x.warn) ? 'Все шаги пройдены, но соединение с каталогом не защищено — для эксплуатации включите LDAPS и проверку сертификата'
+                : 'Все шаги пройдены — каталог готов к входу пользователей')
+              : `Есть ошибки: ${r.steps.filter((x) => !x.ok).length} из ${r.steps.length} шагов. Подробности — в шагах с крестиком.`),
             h('ol', { class: 'checklist inset' }, r.steps.map((s) => h('li', null,
-              h('span', { class: 'ck-ic', 'data-s': s.ok ? 'ok' : 'error' }, statusIcon(s.ok ? 'ok' : 'error'), h('span', { class: 'sr-only', text: s.ok ? 'Успешно' : 'Ошибка' })),
+              h('span', { class: 'ck-ic', 'data-s': s.warn ? 'warning' : (s.ok ? 'ok' : 'error') }, statusIcon(s.warn ? 'warning' : (s.ok ? 'ok' : 'error')),
+                h('span', { class: 'sr-only', text: s.warn ? 'Предупреждение' : (s.ok ? 'Успешно' : 'Ошибка') })),
               h('span', { class: 'ck-title', text: STEP[s.step] || s.step }),
               h('span', { class: 'ck-meta', text: [s.host, `${s.ms} мс`].filter(Boolean).join(', ') }),
               h('p', { class: 'ck-msg', text: s.detail })))));
