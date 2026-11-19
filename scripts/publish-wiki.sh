@@ -18,6 +18,8 @@ done
 cd "$TMP/wiki"
 git add -A
 git diff --cached --quiet && { echo "изменений нет"; exit 0; }
-git commit -q -m "Документация MFA Gate $(cat "$ROOT/VERSION")"
+# автор — тот же, что в основном репозитории (там идентичность часто задана локально, а не глобально)
+git -c user.name="$(git -C "$ROOT" config user.name)" -c user.email="$(git -C "$ROOT" config user.email)" \
+  commit -q -m "Документация MFA Gate $(cat "$ROOT/VERSION")"
 git push -q
 echo "опубликовано: https://github.com/$REPO/wiki"
