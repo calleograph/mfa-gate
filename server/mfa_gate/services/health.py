@@ -74,7 +74,8 @@ async def checks(session: AsyncSession) -> dict:
     providers = build_providers()
     no_push = await session.scalar(select(func.count()).select_from(Device).where(Device.status == "active", Device.push_provider == "none"))
     out.append(_check("Доставка push", "ok" if providers else "warning",
-                      (f"провайдеры: {', '.join(providers)}" if providers else "провайдеры не настроены — телефоны получают запросы только при открытом приложении")
+                      (f"провайдеры: {', '.join(providers)}" if providers
+                       else "провайдеры не настроены — запрос виден при открытом приложении или в foss с мгновенными уведомлениями")
                       + (f"; устройств без push-канала: {no_push}" if no_push else ""),
                       "" if providers else "Задайте MFA_GATE_PUSH_FCM_CREDENTIALS_FILE (см. docs/push.md)"))
 
