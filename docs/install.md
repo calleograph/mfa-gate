@@ -21,7 +21,7 @@
 |---|---|---|
 | `postgres` | PostgreSQL 16 (`postgres:16-alpine`), база и пользователь `mfagate` | нет |
 | `migrate` | применяет миграции и завершается; остальные стартуют после него | нет |
-| `api` | панель, REST API `/api/v1`, Device API `/api/device/v1`, `/health/live`, `/health/ready`, OpenAPI `/api/docs` | `MFA_GATE_HTTP_BIND:MFA_GATE_HTTP_PORT` → 8080/tcp |
+| `api` | личный кабинет `/`, панель `/admin/`, REST API `/api/v1`, Device API `/api/device/v1`, `/health/live`, `/health/ready`, OpenAPI `/api/docs` | `MFA_GATE_HTTP_BIND:MFA_GATE_HTTP_PORT` → 8080/tcp |
 | `radius` | RADIUS-сервер | `MFA_GATE_RADIUS_BIND:MFA_GATE_RADIUS_PORT` → 1812/udp |
 | `worker` | доставка push, истечение запросов, очистка по срокам хранения | нет |
 
@@ -120,7 +120,10 @@ sudo MFA_GATE_HTTP_PORT=8180 MFA_GATE_RADIUS_PORT=11812 MFA_GATE_PUBLIC_URL=http
 
 | Переменная | По умолчанию | Назначение |
 |---|---|---|
-| `MFA_GATE_PUBLIC_URL` | — | адрес для телефонов и администраторов; попадает в QR привязки |
+| `MFA_GATE_PUBLIC_URL` | — | внутренний адрес личного кабинета (`/`) и панели (`/admin/`); попадает в QR привязки, если не задан `MFA_GATE_DEVICE_URL` |
+| `MFA_GATE_DEVICE_URL` | = `MFA_GATE_PUBLIC_URL` | внешний HTTPS-адрес Device API для телефонов (в QR привязки). Публикуется через reverse proxy только с префиксом `/api/device/`; если хост отличается от хоста `MFA_GATE_PUBLIC_URL`, сервер отвечает 404 на запросы к этому хосту вне `/api/device/` и `/health/` ([network.md](network.md)) |
+| `MFA_GATE_PORTAL_ENROLL_NETWORKS` | `10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,fc00::/7` | сети, из которых разрешена первая регистрация фактора в кабинете по одному паролю; пусто — любой адрес (не рекомендуется) |
+| `MFA_GATE_PORTAL_ENROLL_GROUPS` | пусто | группы MFA Gate или каталога, которым разрешена самостоятельная регистрация; пусто — все, кто прошёл первый фактор |
 | `MFA_GATE_SERVER_NAME` | `MFA Gate` | имя в приложении и в записи TOTP |
 | `MFA_GATE_PUSH_TIMEOUT` | `45` | секунд на ответ на push; таймаут RADIUS на шлюзе должен быть больше (≥ 60) |
 | `MFA_GATE_TRUSTED_PROXIES` | `auto` | от каких адресов принимать `X-Forwarded-For` и `X-Forwarded-Proto`. `auto` — loopback и шлюз сети контейнера (reverse proxy на этом же хосте). Прокси на другом сервере: `auto,198.51.100.30/32`. Целые сети не указывайте |
@@ -144,16 +147,17 @@ sudo MFA_GATE_HTTP_PORT=8180 MFA_GATE_RADIUS_PORT=11812 MFA_GATE_PUBLIC_URL=http
 
 ## HTTPS
 
-MFA Gate не завершает TLS сам: панель, REST API и Device API публикуются через reverse proxy с TLS. После первичной установки панель работает по `http://IP:порт` — только для изолированной сети. Готовые конфигурации nginx и Caddy и проверка: [HTTPS через reverse proxy](../wiki/HTTPS-через-reverse-proxy.md).
+MFA Gate не завершает TLS сам: кабинет, панель, REST API и Device API публикуются через reverse proxy с TLS. После первичной установки панель работает по `http://IP:порт/admin/` — только для изолированной сети. Пошагово: [HTTPS через reverse proxy](../wiki/HTTPS-через-reverse-proxy.md); примеры для двух имён (внутреннее — всё приложение, внешнее — только Device API): [deploy/proxy/nginx.conf](../deploy/proxy/nginx.conf), [deploy/proxy/Caddyfile](../deploy/proxy/Caddyfile); сеть целиком — [network.md](network.md).
 
 Требования к прокси:
 
 - перезаписывать `X-Forwarded-For` адресом клиента (MFA Gate берёт **последнее** значение и только от адресов из `MFA_GATE_TRUSTED_PROXIES`);
 - передавать `X-Forwarded-Proto: https`;
+- передавать исходный `Host`;
 - таймаут чтения не меньше 60 секунд (long-poll телефонов до 30 с), буферизацию ответов выключить;
-- в `.env`: `MFA_GATE_PUBLIC_URL=https://<имя>`, `MFA_GATE_HTTP_BIND=127.0.0.1`; применить — `sudo mfagatectl start`.
+- в `.env`: `MFA_GATE_PUBLIC_URL=https://<имя>`, при внешней публикации Device API — `MFA_GATE_DEVICE_URL=https://<внешнее имя>`, `MFA_GATE_HTTP_BIND=127.0.0.1`; применить — `sudo mfagatectl start`.
 
-Телефоны, привязанные по HTTP, после перехода нужно привязать заново.
+Телефоны, привязанные по HTTP или до смены `MFA_GATE_DEVICE_URL`, нужно привязать заново.
 
 ## Межсетевой экран
 

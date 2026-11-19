@@ -19,6 +19,7 @@ from ..models import AdminSession, ApiClient, Device, User
 from ..security.crypto import same_hash, sha256_hex
 
 SESSION_COOKIE = "mfa_gate_session"
+PORTAL_COOKIE = "mfa_gate_portal"
 UNSAFE = {"POST", "PUT", "PATCH", "DELETE"}
 
 # Права: "<область>:read|write". Роли администраторов и scopes API-клиентов используют одни и те же строки.
@@ -126,17 +127,26 @@ class Principal:
     ip: str = ""
 
 
-async def admin_session(request: Request, session: AsyncSession = Depends(get_session)) -> tuple[AdminSession, User] | None:
-    token = request.cookies.get(SESSION_COOKIE)
+async def _session_of(request: Request, session: AsyncSession, kind: str) -> tuple[AdminSession, User] | None:
+    token = request.cookies.get(SESSION_COOKIE if kind == "admin" else PORTAL_COOKIE)
     if not token:
         return None
     row = await session.get(AdminSession, sha256_hex(token))
-    if row is None or row.expires_at <= datetime.now(UTC):
+    # вид проверяется явно: сессия портала не должна открывать панель, даже если её токен подставят в cookie панели
+    if row is None or row.kind != kind or row.expires_at <= datetime.now(UTC):
         return None
     user = await session.get(User, row.user_id)
-    if user is None or user.status != "active" or not user.admin_role:
+    if user is None or user.status != "active" or (kind == "admin" and not user.admin_role):
         return None
     return row, user
+
+
+async def admin_session(request: Request, session: AsyncSession = Depends(get_session)) -> tuple[AdminSession, User] | None:
+    return await _session_of(request, session, "admin")
+
+
+async def portal_session(request: Request, session: AsyncSession) -> tuple[AdminSession, User] | None:
+    return await _session_of(request, session, "portal")
 
 
 async def principal(request: Request, session: AsyncSession = Depends(get_session)) -> Principal:

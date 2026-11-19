@@ -34,6 +34,8 @@ class User(Base):
     password_hash: Mapped[str | None] = mapped_column(String(255))            # только для local
     status: Mapped[str] = mapped_column(String(16), default="active")         # active | disabled
     must_change_password: Mapped[bool] = mapped_column(Boolean, default=False)   # временный пароль первого администратора
+    # первый подтверждённый второй фактор; после него самостоятельная регистрация по одному паролю закрыта (только разрешение администратора)
+    mfa_enrolled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     admin_role: Mapped[str | None] = mapped_column(String(32))                # superadmin | admin | operator | auditor
     directory_groups: Mapped[list] = mapped_column(JSONB, default=list)       # снимок групп каталога с последнего входа
     failed_attempts: Mapped[int] = mapped_column(Integer, default=0)
@@ -95,7 +97,7 @@ class OneTimeToken(Base):
     __tablename__ = "one_time_tokens"
     id: Mapped[uuid.UUID] = _id()
     user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
-    purpose: Mapped[str] = mapped_column(String(32))                           # enroll_device | emergency_admin
+    purpose: Mapped[str] = mapped_column(String(32))                           # enroll_device | emergency_admin | backup_code | reenroll
     token_hash: Mapped[str] = mapped_column(String(64), unique=True)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -122,6 +124,8 @@ class RadiusClient(Base):
     address: Mapped[str] = mapped_column(String(64))                           # IP или CIDR источника запросов
     secret_enc: Mapped[str] = mapped_column(Text)
     nas_identifier: Mapped[str | None] = mapped_column(String(255))            # если задан — обязан совпасть
+    # mfa_gate — пароль проверяет MFA Gate; gateway — шлюз уже проверил пароль сам и присылает пустой пароль или OTP
+    first_factor: Mapped[str] = mapped_column(String(16), default="mfa_gate")
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = _created()
@@ -224,6 +228,7 @@ class PushOutbox(Base):
 class AdminSession(Base):
     __tablename__ = "admin_sessions"
     id: Mapped[str] = mapped_column(String(64), primary_key=True)              # SHA-256 токена cookie
+    kind: Mapped[str] = mapped_column(String(16), default="admin")             # admin | portal — у каждой свой cookie
     user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     mfa_passed: Mapped[bool] = mapped_column(Boolean, default=False)
     csrf: Mapped[str] = mapped_column(String(64))

@@ -17,7 +17,7 @@ from sqlalchemy import select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..config import settings
-from ..models import AuthRequest, Device, Group, LdapDirectory, Policy, PushOutbox, Resource, TotpFactor, User
+from ..models import AuthRequest, Device, Group, LdapDirectory, OneTimeToken, Policy, PushOutbox, Resource, TotpFactor, User
 from ..security import totp
 from ..security.crypto import b64url, box, decision_message, verify_decision, verify_password
 from . import events
@@ -103,16 +103,25 @@ async def _provision(session: AsyncSession, directory: LdapDirectory, found) -> 
     return user
 
 
+async def find_user(session: AsyncSession, login: str) -> User | None:
+    """DOMAIN\\user и UPN — та же доменная запись: блокировка и счётчик ошибок общие."""
+    from . import ldap as ldap_service   # noqa: PLC0415
+
+    login = login.strip().lower()
+    user = await session.scalar(select(User).where(User.login == login))
+    if user is None:
+        short = ldap_service.parse_login(login)[0].lower()
+        if short != login:
+            user = await session.scalar(select(User).where(User.login == short, User.source == "ldap"))
+    return user
+
+
 async def primary(session: AsyncSession, login: str, password: str) -> tuple[User | None, str | None]:
     """Первый фактор. Возвращает (пользователь, None) или (пользователь|None, код причины)."""
     from . import ldap as ldap_service   # noqa: PLC0415 — модуль тянет ldap3, нужен только здесь
 
     login = login.strip().lower()
-    user = await session.scalar(select(User).where(User.login == login))
-    if user is None:   # DOMAIN\user и UPN — та же доменная запись: блокировка и счётчик ошибок общие
-        short = ldap_service.parse_login(login)[0].lower()
-        if short != login:
-            user = await session.scalar(select(User).where(User.login == short, User.source == "ldap"))
+    user = await find_user(session, login)
     if user is not None and user.locked_until and user.locked_until > _now():
         return user, "locked"
     if user is not None and user.source == "local" and user.login == login:
@@ -217,7 +226,7 @@ async def begin(session: AsyncSession, *, login: str, password: str | None, reso
     if resource is not None and not resource.enabled:
         return reject("resource_disabled")
     if password is None:
-        user = await session.scalar(select(User).where(User.login == req.login))
+        user = await find_user(session, req.login)
         reason = "unknown_user" if user is None else ("user_disabled" if user.status != "active" else None)
         if user is not None and user.locked_until and user.locked_until > _now():
             reason = "locked"
@@ -278,6 +287,17 @@ async def begin(session: AsyncSession, *, login: str, password: str | None, reso
         await _login_ok(session, user)
         return Outcome("accept", None, req.id)
     return reject("no_factor")
+
+
+async def factor_activated(session: AsyncSession, user: User) -> None:
+    """Подтверждён новый второй фактор: дальше самостоятельная регистрация по одному паролю закрыта, разрешение на перерегистрацию погашено."""
+    user.mfa_enrolled_at = user.mfa_enrolled_at or _now()
+    await session.execute(update(OneTimeToken).where(OneTimeToken.user_id == user.id, OneTimeToken.purpose == "reenroll",
+                                                     OneTimeToken.used_at.is_(None)).values(used_at=_now()))
+    # ссылки привязки, выпущенные самим сотрудником (в том числе в сессии «только пароль»), не переживают подтверждение фактора
+    await session.execute(update(OneTimeToken).where(OneTimeToken.user_id == user.id, OneTimeToken.purpose == "enroll_device",
+                                                     OneTimeToken.created_by == user.login, OneTimeToken.used_at.is_(None))
+                          .values(used_at=_now()))
 
 
 async def _login_ok(session: AsyncSession, user: User) -> None:

@@ -3,17 +3,18 @@ from __future__ import annotations
 import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
 
 from ..config import settings
 from ..db import sessionmaker
 from ..services import events
-from . import auth, device, manage
+from . import auth, device, manage, portal
 
 log = logging.getLogger("mfa_gate.api")
 
@@ -42,6 +43,17 @@ def create_app() -> FastAPI:
     async def validation_error(_request: Request, exc: RequestValidationError):
         fields = [{"field": ".".join(str(x) for x in e["loc"][1:]), "message": e["msg"]} for e in exc.errors()]
         return JSONResponse({"code": "validation", "message": "Проверьте поля формы", "fields": fields}, status_code=422)
+
+    device_host = urlsplit(cfg.device_url).hostname
+    split_hosts = device_host and device_host != urlsplit(cfg.public_url).hostname
+
+    @app.middleware("http")
+    async def device_host_only(request: Request, call_next):
+        # внешний адрес телефонов отдаёт только Device API: ошибка в конфигурации прокси не откроет портал и панель из интернета
+        if split_hosts and (request.headers.get("host") or "").split(":")[0].lower() == device_host \
+                and not request.url.path.startswith(("/api/device/", "/health/")):
+            return JSONResponse({"code": "not_found", "message": "Не найдено"}, status_code=404)
+        return await call_next(request)
 
     @app.middleware("http")
     async def security_headers(request: Request, call_next):
@@ -72,17 +84,23 @@ def create_app() -> FastAPI:
     app.include_router(auth.router)
     app.include_router(manage.router)
     app.include_router(device.router)
+    app.include_router(portal.router)
 
     static = Path(cfg.static_dir)
     if static.is_dir():
         app.mount("/assets", StaticFiles(directory=static / "assets", check_dir=False), name="assets")
+
+        @app.get("/admin", include_in_schema=False)
+        async def admin_slash():
+            return RedirectResponse("/admin/", status_code=308)
 
         @app.get("/", include_in_schema=False)
         @app.get("/{path:path}", include_in_schema=False)
         async def spa(path: str = ""):
             if path.startswith(("api/", "health/")):
                 raise HTTPException(404, {"code": "not_found", "message": "Не найдено"})
-            return FileResponse(static / "index.html")
+            # / — портал сотрудника, /admin/ — панель управления (у обеих хэш-маршрутизация)
+            return FileResponse(static / ("admin.html" if path.startswith("admin/") else "index.html"))
 
     return app
 

@@ -140,3 +140,40 @@ def test_compose_database_url_matches_postgres_service():
     compose = (Path(__file__).resolve().parents[2] / "deploy" / "compose.yml").read_text()
     user, db = re.search(r"postgresql\+asyncpg://([^:]+):\$\{POSTGRES_PASSWORD:\?\}@postgres:5432/(\S+)", compose).groups()
     assert f"POSTGRES_USER: {user}" in compose and f"POSTGRES_DB: {db}" in compose
+
+
+def test_publication_map_and_proxy_snippets():
+    from mfa_gate.config import Settings
+    from mfa_gate.services import publication
+
+    cfg = Settings(public_url="https://mfa.example.org", device_url="https://auth.example.org", published_http="0.0.0.0:8080",
+                   published_radius="0.0.0.0:1812", push_timeout=45)
+    d = publication.build(cfg, [("gw", "192.0.2.10", "gateway")], [("AD", ["dc1.example.org"], 636, "ldaps")], ["fcm"])
+    by = {c["id"]: c for c in d["components"]}
+    assert by["device"]["address"] == "https://auth.example.org/api/device/v1/" and by["admin"]["address"].endswith("/admin/")
+    assert "gw (192.0.2.10)" in by["radius"]["access"] and by["push"]["address"].startswith("fcm.googleapis.com:443")
+    assert d["gateway_timeout"] == 60 and any("шлюз" in w for w in d["warnings"])
+    # внешний сервер прокси отдаёт только Device API, upstream — loopback вместо 0.0.0.0
+    assert "server_name auth.example.org" in d["nginx"] and "location / { return 404; }" in d["nginx"] and "127.0.0.1:8080" in d["nginx"]
+    assert "handle /api/device/*" in d["caddy"] and "remote_ip private_ranges" in d["caddy"] and "deny all;" in d["nginx"]
+    same = publication.build(Settings(public_url="http://192.0.2.5:8080"), [], [], [])
+    assert "auth.example.org" not in same["nginx"] and any("MFA_GATE_DEVICE_URL" in w for w in same["warnings"])
+
+
+def test_portal_enroll_networks_and_backup_codes():
+    from mfa_gate.api import portal
+
+    assert portal._in_networks("10.1.2.3", "10.0.0.0/8,192.168.0.0/16")
+    assert not portal._in_networks("203.0.113.9", "10.0.0.0/8")
+    assert portal._in_networks("203.0.113.9", "")          # пусто — без ограничения
+    assert not portal._in_networks("not-an-ip", "10.0.0.0/8")
+    codes = portal.new_backup_codes()
+    assert len(set(codes)) == 10 and all(len(c) == 11 and c[5] == "-" for c in codes)
+    assert portal._norm_code(" ABCDE-fghjk ") == "abcdefghjk"
+
+
+def test_settings_device_url_defaults_to_public():
+    from mfa_gate.config import Settings
+
+    assert Settings(public_url="http://192.0.2.5:8080/").device_url == "http://192.0.2.5:8080"
+    assert Settings(public_url="http://a", device_url="https://auth.example.org/").device_url == "https://auth.example.org"

@@ -1,11 +1,12 @@
 // Точка входа: сессия, оболочка, хэш-роутинг (#/users/<id>), права разделов.
 import { get, post, setCsrf, onSessionLost } from './api.js';
-import { h, icon, brandMark, iconButton, button, segmented, empty, errorState, clear, toast, fill, actionMenu, formDialog, PASSWORD_FIELDS, passwordErrors, changePassword } from './ui.js';
+import { h, icon, brandMark, iconButton, button, empty, themeSwitch, errorState, clear, toast, fill, actionMenu, formDialog, PASSWORD_FIELDS, passwordErrors, changePassword } from './ui.js';
 import { renderLogin } from './views/login.js';
 import { overview } from './views/overview.js';
 import { usersList, userCard } from './views/users.js';
 import { groupsPage, devicesPage } from './views/access.js';
 import { resourcesPage, radiusPage, apiClientsPage, ldapPage } from './views/integrations.js';
+import { publicationPage } from './views/publication.js';
 import { policiesPage, historyPage, problemsPage, auditPage, diagnosticsPage } from './views/control.js';
 
 const app = document.getElementById('app');
@@ -24,6 +25,7 @@ const NAV = [
     { path: '/radius', label: 'RADIUS-клиенты', icon: 'router', perm: 'radius:read' },
     { path: '/api-clients', label: 'API-клиенты', icon: 'key-round', perm: 'apiclients:read' },
     { path: '/ldap', label: 'LDAP / AD', icon: 'network', perm: 'ldap:read' },
+    { path: '/publication', label: 'Адреса и публикация', icon: 'external-link', perm: 'system:read' },
   ] },
   { group: 'Контроль', items: [
     { path: '/policies', label: 'Политики', icon: 'shield', perm: 'policies:read' },
@@ -44,6 +46,7 @@ const ROUTES = [
   ['/radius', radiusPage, 'radius:read'],
   ['/api-clients', apiClientsPage, 'apiclients:read'],
   ['/ldap', ldapPage, 'ldap:read'],
+  ['/publication', publicationPage, 'system:read'],
   ['/policies', policiesPage, 'policies:read'],
   ['/history', historyPage, 'requests:read'],
   ['/problems', problemsPage, 'requests:read'],
@@ -65,20 +68,6 @@ function match(path) {
   }
   return null;
 }
-
-// ------------------------------------------------------------------ тема
-const THEME_KEY = 'mfa_gate.theme';
-function getTheme() { try { return localStorage.getItem(THEME_KEY) || 'auto'; } catch { return 'auto'; } }
-function setTheme(t) {
-  if (t === 'auto') document.documentElement.removeAttribute('data-theme');
-  else document.documentElement.setAttribute('data-theme', t);
-  try { if (t === 'auto') localStorage.removeItem(THEME_KEY); else localStorage.setItem(THEME_KEY, t); } catch { /* приватный режим — тема до перезагрузки */ }
-}
-export const themeSwitch = () => segmented([
-  { value: 'auto', icon: 'monitor', ariaLabel: 'Тема как в системе', title: 'Как в системе' },
-  { value: 'light', icon: 'sun', ariaLabel: 'Светлая тема', title: 'Светлая' },
-  { value: 'dark', icon: 'moon', ariaLabel: 'Тёмная тема', title: 'Тёмная' },
-], getTheme(), setTheme, 'Тема оформления');
 
 // ------------------------------------------------------------------ оболочка
 let shell, mainEl, navLinks = [], menuBtn, firstRender = true, routeAbort = null, prevHash = '', curHash = '';

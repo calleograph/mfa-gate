@@ -39,6 +39,7 @@ import io.github.calleograph.mfagate.data.TotpEntry
 import io.github.calleograph.mfagate.net.DeviceAuth
 import io.github.calleograph.mfagate.push.Notifier
 import io.github.calleograph.mfagate.push.Push
+import io.github.calleograph.mfagate.push.nextBackoff
 import java.security.Signature
 import java.util.UUID
 
@@ -105,7 +106,7 @@ class RequestsViewModel(private val app: App) : ViewModel() {
                 _errors.update { it + (a.id to "${a.host}: ${e.userMessage}") }
                 _loaded.value = true
                 delay(backoff)
-                backoff = (backoff * 2).coerceAtMost(60_000L)
+                backoff = nextBackoff(backoff)
             }
         }
     }

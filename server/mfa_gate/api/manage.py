@@ -12,7 +12,7 @@ from typing import Literal
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field, field_validator
-from sqlalchemy import Select, func, or_, select
+from sqlalchemy import Select, delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..config import settings
@@ -169,7 +169,13 @@ async def get_user(user_id: uuid.UUID, _: Principal = Depends(need("users:read")
     factors = (await session.scalars(select(TotpFactor).where(TotpFactor.user_id == user.id).order_by(TotpFactor.created_at))).all()
     requests = (await session.scalars(select(AuthRequest).where(AuthRequest.user_id == user.id)
                                       .order_by(AuthRequest.created_at.desc()).limit(20))).all()
+    now = datetime.now(UTC)
+    backup = await session.scalar(select(func.count()).select_from(OneTimeToken).where(
+        OneTimeToken.user_id == user.id, OneTimeToken.purpose == "backup_code", OneTimeToken.used_at.is_(None)))
+    permit = await session.scalar(select(func.max(OneTimeToken.expires_at)).where(
+        OneTimeToken.user_id == user.id, OneTimeToken.purpose == "reenroll", OneTimeToken.used_at.is_(None), OneTimeToken.expires_at > now))
     return {**user_out(user), "device_list": [device_out(d) for d in devices],
+            "mfa_enrolled_at": _dt(user.mfa_enrolled_at), "backup_codes_left": backup or 0, "reenroll_until": _dt(permit),
             "totp_list": [{"id": str(f.id), "name": f.name, "status": f.status, "last_used_at": _dt(f.last_used_at),
                            "created_at": _dt(f.created_at)} for f in factors],
             "requests": [request_out(r) for r in requests]}
@@ -211,6 +217,26 @@ async def unlock_user(user_id: uuid.UUID, p: Principal = Depends(need("users:wri
     return user_out(user)
 
 
+@router.post("/users/{user_id}/reenroll", tags=["users"])
+async def allow_reenroll(user_id: uuid.UUID, p: Principal = Depends(need("devices:write")), session: AsyncSession = Depends(get_session)):
+    """Восстановление после потери телефона: на 24 ч сотрудник может сам настроить фактор в портале по одному паролю
+    (по-прежнему только из сетей регистрации). Разрешение гаснет при подтверждении нового фактора."""
+    user = await _admin_target(session, p, user_id)
+    expires = datetime.now(UTC) + timedelta(hours=24)
+    session.add(OneTimeToken(user_id=user.id, purpose="reenroll", token_hash=sha256_hex(new_token()), expires_at=expires, created_by=p.name))
+    audit(session, "user.reenroll_allowed", actor=p.name, target=user.login, ip=p.ip, severity="warning")
+    await session.commit()
+    return {"reenroll_until": _dt(expires)}
+
+
+@router.delete("/users/{user_id}/backup-codes", tags=["users"], status_code=204)
+async def reset_backup_codes(user_id: uuid.UUID, p: Principal = Depends(need("devices:write")), session: AsyncSession = Depends(get_session)):
+    user = await _admin_target(session, p, user_id)
+    await session.execute(delete(OneTimeToken).where(OneTimeToken.user_id == user.id, OneTimeToken.purpose == "backup_code"))
+    audit(session, "user.backup_codes_reset", actor=p.name, target=user.login, ip=p.ip, severity="warning")
+    await session.commit()
+
+
 @router.delete("/users/{user_id}", tags=["users"], status_code=204)
 async def delete_user(user_id: uuid.UUID, p: Principal = Depends(need("users:write")), session: AsyncSession = Depends(get_session)):
     user = await _admin_target(session, p, user_id)
@@ -224,13 +250,18 @@ async def delete_user(user_id: uuid.UUID, p: Principal = Depends(need("users:wri
 async def device_enrollment(user_id: uuid.UUID, p: Principal = Depends(need("devices:write")), session: AsyncSession = Depends(get_session)):
     """Одноразовая ссылка привязки телефона: показывается QR-кодом, на сервере хранится только хэш."""
     user = await _admin_target(session, p, user_id)
+    return await issue_enrollment(session, user, p.name, p.ip, timedelta(hours=settings().enrollment_ttl_hours))
+
+
+async def issue_enrollment(session: AsyncSession, user: User, actor: str, ip: str, ttl: timedelta) -> dict:
+    """Ссылка ведёт на внешний адрес Device API: телефон привязывается и подтверждает входы из дома, до подключения VPN."""
     token = new_token()
-    expires = datetime.now(UTC) + timedelta(hours=settings().enrollment_ttl_hours)
-    session.add(OneTimeToken(user_id=user.id, purpose="enroll_device", token_hash=sha256_hex(token), expires_at=expires, created_by=p.name))
-    audit(session, "device.enrollment_issued", actor=p.name, target=user.login, ip=p.ip)
+    expires = datetime.now(UTC) + ttl
+    session.add(OneTimeToken(user_id=user.id, purpose="enroll_device", token_hash=sha256_hex(token), expires_at=expires, created_by=actor))
+    audit(session, "device.enrollment_issued", actor=actor, target=user.login, ip=ip)
     await session.commit()
     cfg = settings()
-    uri = (f"mfagate://enroll?v=1&url={b64url(cfg.public_url.encode())}&token={token}"
+    uri = (f"mfagate://enroll?v=1&url={b64url(cfg.device_url.encode())}&token={token}"
            f"&label={b64url(f'{user.login}@{cfg.server_name}'.encode())}")
     return {"uri": uri, "qr_svg": totp.qr_svg(uri), "expires_at": _dt(expires)}
 
@@ -256,7 +287,7 @@ class TotpConfirm(BaseModel):
 @router.post("/users/{user_id}/totp/{factor_id}/confirm", tags=["devices"])
 async def totp_confirm(user_id: uuid.UUID, factor_id: uuid.UUID, body: TotpConfirm, p: Principal = Depends(need("devices:write")),
                        session: AsyncSession = Depends(get_session)):
-    await _admin_target(session, p, user_id)
+    user = await _admin_target(session, p, user_id)
     factor = await session.get(TotpFactor, factor_id)
     if factor is None or factor.user_id != user_id or factor.status != "pending":
         raise HTTPException(404, NOT_FOUND)
@@ -264,6 +295,7 @@ async def totp_confirm(user_id: uuid.UUID, factor_id: uuid.UUID, body: TotpConfi
     if step is None:
         raise HTTPException(400, {"code": "invalid_otp", "message": "Код не подошёл — проверьте время на телефоне"})
     factor.status, factor.last_step, factor.name = "active", step, body.name
+    await authflow.factor_activated(session, user)
     audit(session, "totp.enrolled", actor=p.name, target=str(user_id), ip=p.ip)
     await session.commit()
     return {"id": str(factor.id), "status": factor.status}
@@ -410,6 +442,7 @@ class RadiusClientIn(BaseModel):
     address: str = Field(max_length=64)
     secret: str | None = Field(None, min_length=16, max_length=128, description="Пусто — сгенерировать; показывается один раз")
     nas_identifier: str | None = Field(None, max_length=255)
+    first_factor: Literal["mfa_gate", "gateway"] = "mfa_gate"
     enabled: bool = True
 
     @field_validator("address")
@@ -420,7 +453,7 @@ class RadiusClientIn(BaseModel):
 
 def radius_out(c: RadiusClient) -> dict:
     return {"id": str(c.id), "resource_id": str(c.resource_id), "name": c.name, "address": c.address, "nas_identifier": c.nas_identifier,
-            "enabled": c.enabled, "last_seen_at": _dt(c.last_seen_at), "created_at": _dt(c.created_at)}
+            "first_factor": c.first_factor, "enabled": c.enabled, "last_seen_at": _dt(c.last_seen_at), "created_at": _dt(c.created_at)}
 
 
 @router.get("/radius-clients", tags=["radius"])
@@ -434,7 +467,7 @@ async def _save_radius(session: AsyncSession, client: RadiusClient, body: Radius
     # один адрес — один клиент: иначе неясно, каким секретом проверять пакет (разные по размеру сети допустимы — выигрывает более узкая)
     if await session.scalar(select(RadiusClient.id).where(RadiusClient.address == body.address, RadiusClient.id != client.id)):
         raise HTTPException(409, {"code": "address_in_use", "message": f"Адрес {body.address} уже назначен другому RADIUS-клиенту"})
-    for k in ("resource_id", "name", "address", "nas_identifier", "enabled"):
+    for k in ("resource_id", "name", "address", "nas_identifier", "first_factor", "enabled"):
         setattr(client, k, getattr(body, k))
     if body.secret or not client.secret_enc:
         secret = body.secret or new_token(24)
@@ -448,7 +481,7 @@ async def create_radius(body: RadiusClientIn, p: Principal = Depends(need("radiu
     client = RadiusClient(id=uuid.uuid4(), secret_enc="")
     secret = await _save_radius(session, client, body)
     session.add(client)
-    audit(session, "radius_client.created", actor=p.name, target=body.name, ip=p.ip, address=client.address)
+    audit(session, "radius_client.created", actor=p.name, target=body.name, ip=p.ip, address=client.address, first_factor=client.first_factor)
     await session.commit()
     return {**radius_out(client), "secret": secret}
 
@@ -458,7 +491,8 @@ async def update_radius(client_id: uuid.UUID, body: RadiusClientIn, p: Principal
                         session: AsyncSession = Depends(get_session)):
     client = _404(await session.get(RadiusClient, client_id))
     secret = await _save_radius(session, client, body)
-    audit(session, "radius_client.updated", actor=p.name, target=client.name, ip=p.ip, secret_changed=secret is not None)
+    audit(session, "radius_client.updated", actor=p.name, target=client.name, ip=p.ip, secret_changed=secret is not None,
+          first_factor=client.first_factor)
     await session.commit()
     return {**radius_out(client), "secret": secret}
 
@@ -806,3 +840,13 @@ async def dashboard(_: Principal = Depends(need("system:read")), session: AsyncS
 async def diagnostics(_: Principal = Depends(need("system:read")), session: AsyncSession = Depends(get_session)):
     from ..services.health import checks   # noqa: PLC0415
     return await checks(session)
+
+
+@router.get("/system/publication", tags=["system"])
+async def publication(_: Principal = Depends(need("system:read")), session: AsyncSession = Depends(get_session)):
+    from ..services import publication as pub   # noqa: PLC0415
+    from ..services.push import build_providers   # noqa: PLC0415
+    clients = (await session.scalars(select(RadiusClient).where(RadiusClient.enabled).order_by(RadiusClient.name))).all()
+    directories = (await session.scalars(select(LdapDirectory).where(LdapDirectory.enabled).order_by(LdapDirectory.priority))).all()
+    return pub.build(settings(), [(c.name, c.address, c.first_factor) for c in clients],
+                     [(d.name, list(d.hosts), d.port, d.encryption) for d in directories], list(build_providers()))

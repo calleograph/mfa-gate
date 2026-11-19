@@ -55,7 +55,8 @@ export async function api(path, { method = 'GET', body, query, signal } = {}) {
   try { data = await res.json(); } catch { /* не JSON — ниже сообщение по коду */ }
   if (!res.ok) {
     const err = new ApiError(res.status, data && data.message ? data : { code: 'http', message: `Сервер ответил ошибкой ${res.status}` });
-    if (res.status === 401 && !path.startsWith('/auth/') && onUnauthorized) onUnauthorized(err);
+    // 401 на шагах входа — обычный ответ формы, а не потеря сессии
+    if (res.status === 401 && !/^\/(auth\/|portal\/(login|mfa))/.test(path) && onUnauthorized) onUnauthorized(err);
     throw err;
   }
   return data;

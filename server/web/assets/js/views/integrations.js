@@ -63,7 +63,7 @@ export function radiusPage(ctx) {
     extras: async (c) => ({ resources: await loadResources(c) }),
     empty: { iconName: 'router', title: 'RADIUS-клиентов пока нет', text: 'Добавьте VPN-шлюз: укажите его адрес и ресурс. Общий секрет будет показан один раз после создания.' },
     columns: ({ resources }) => [
-      { label: 'Клиент', primary: true, render: (c) => cellMain(c.name, c.nas_identifier ? `NAS-Identifier: ${c.nas_identifier}` : null) },
+      { label: 'Клиент', primary: true, render: (c) => cellMain(c.name, [c.first_factor === 'gateway' ? 'пароль проверяет шлюз' : null, c.nas_identifier ? `NAS-Identifier: ${c.nas_identifier}` : null].filter(Boolean).join(' · ') || null) },
       { label: 'Адрес', render: (c) => h('span', { class: 'td-mono', text: c.address }) },
       { label: 'Ресурс', render: (c) => resources.find((r) => r.id === c.resource_id)?.name || h('span', { class: 'faint', text: 'нет доступа' }) },
       { label: 'Статус', render: (c) => switchBadge(c.enabled) },
@@ -75,18 +75,22 @@ export function radiusPage(ctx) {
       { name: 'resource_id', type: 'select', label: 'Ресурс', required: true, half: true, options: resourceOptions(resources, resources.length ? null : 'Нет ресурсов') },
       { name: 'address', label: 'Адрес шлюза', required: true, mono: true, half: true, placeholder: '192.0.2.10', hint: 'IP-адрес или сеть, например 198.51.100.0/28. Один адрес — один клиент.' },
       { name: 'nas_identifier', label: 'NAS-Identifier', mono: true, half: true, hint: 'Необязательно. Если задан, должен совпадать с атрибутом в запросе.' },
+      { name: 'first_factor', type: 'choices', label: 'Кто проверяет доменный пароль', default: 'mfa_gate', options: [
+        { value: 'mfa_gate', label: 'MFA Gate', icon: 'shield-check', hint: 'Шлюз передаёт логин и пароль (PAP), MFA Gate проверяет их в каталоге и запрашивает второй фактор.' },
+        { value: 'gateway', label: 'Сам шлюз', icon: 'router', risk: true, hint: 'Шлюз уже проверил пароль и присылает только логин или логин и OTP-код (Ideco: режимы «Логин», «Логин и OTP-код»). MFA Gate доверяет этому только для этого клиента.' },
+      ] },
       { name: 'secret', label: row ? 'Новый общий секрет' : 'Общий секрет', type: 'password', autocomplete: 'new-password', mono: true, trim: false,
         hint: row ? 'Оставьте пустым, чтобы не менять. Или используйте «Сменить секрет» в меню — MFA Gate сгенерирует новый.' : 'Оставьте пустым — MFA Gate сгенерирует надёжный секрет и покажет его один раз. Свой — от 16 символов.' },
       { name: 'enabled', type: 'switch', label: 'Клиент включён', default: true },
     ].filter(Boolean),
-    toBody: (v) => ({ name: v.name, resource_id: v.resource_id || null, address: v.address, nas_identifier: v.nas_identifier || null, secret: v.secret || null, enabled: v.enabled }),
+    toBody: (v) => ({ name: v.name, resource_id: v.resource_id || null, address: v.address, nas_identifier: v.nas_identifier || null, first_factor: v.first_factor, secret: v.secret || null, enabled: v.enabled }),
     afterSave: (res) => { if (res.secret) showSecret(res, res.secret); },
     rowMenu: (c, { reload, writable }) => (writable ? [{ label: 'Сменить секрет', icon: 'refresh-cw', onSelect: async () => {
       const secret = randomSecret();
       const res = await confirmDialog({
         title: `Сменить секрет «${c.name}»?`, confirmLabel: 'Сменить секрет', danger: true,
         text: 'Старый секрет перестанет действовать сразу. Пока вы не укажете новый на шлюзе, входы через него будут отклоняться.',
-        action: () => put(`/radius-clients/${c.id}`, { resource_id: c.resource_id, name: c.name, address: c.address, nas_identifier: c.nas_identifier, enabled: c.enabled, secret }),
+        action: () => put(`/radius-clients/${c.id}`, { resource_id: c.resource_id, name: c.name, address: c.address, nas_identifier: c.nas_identifier, first_factor: c.first_factor, enabled: c.enabled, secret }),
       });
       if (res) { showSecret(c, secret); reload(); }
     } }] : []),

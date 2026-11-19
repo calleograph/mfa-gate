@@ -58,6 +58,8 @@ interface Vault {
     var appLock: Boolean
     /** Первый запуск пройден: привязан сервер или пользователь выбрал «только коды». */
     var onboarded: Boolean
+    /** foss: постоянное соединение с сервером ради мгновенных уведомлений (по умолчанию включено). */
+    var instantNotifications: Boolean
 
     fun saveAccount(a: Account)
     fun removeAccount(id: String)
@@ -93,6 +95,10 @@ class PrefsVault(context: Context, private val box: Sealer) : Vault {
     override var onboarded: Boolean
         get() = prefs.getBoolean("onboarded", false) || _accounts.value.isNotEmpty()
         set(v) { prefs.edit().putBoolean("onboarded", v).apply() }
+
+    override var instantNotifications: Boolean
+        get() = prefs.getBoolean("instant_notifications", true)
+        set(v) { prefs.edit().putBoolean("instant_notifications", v).apply() }
 
     // commit(), а не apply(): секрет устройства должен лечь на диск до того, как интерфейс скажет «привязано».
     @Synchronized override fun saveAccount(a: Account) {

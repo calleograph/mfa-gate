@@ -1,6 +1,6 @@
 // Вход администратора: пароль → второй фактор (push с живым ожиданием, TOTP-код) или первичное подключение TOTP.
 import { api, post, setCsrf } from '../api.js';
-import { h, brandMark, button, busy, notice, qrImage, secretBox, clear, fill, form, PASSWORD_FIELDS, passwordErrors, changePassword } from '../ui.js';
+import { h, brandMark, button, busy, notice, qrImage, secretBox, clear, fill, form, pushWait, PASSWORD_FIELDS, passwordErrors, changePassword } from '../ui.js';
 
 export function renderLogin(root, { onDone, message, themeSwitch }) {
   let stop = () => {};
@@ -133,71 +133,22 @@ export function renderLogin(root, { onDone, message, themeSwitch }) {
 
   function pushStep(methods) {
     stop();
-    const ac = new AbortController();
-    let timer = 0;
-    stop = () => { ac.abort(); clearInterval(timer); };
-    const box = h('div', { class: 'push-wait' });
-    // живая область — только смена состояния и рубежи 1:00 / 0:10, а не каждая секунда таймера
-    const live = h('p', { class: 'sr-only', role: 'status', 'aria-live': 'polite' });
-    const mark = h('div', { class: 'pw-mark', 'aria-hidden': 'true' }, h('span', { class: 'a' }), h('span', { class: 'b' }));
-    const title = h('p', { class: 'pw-title', text: 'Отправляем запрос на телефон…' });
-    const text = h('p', { class: 'pw-text', text: 'Откройте MFA Gate на привязанном телефоне и подтвердите вход в панель.' });
-    const bar = h('i');
-    const time = h('p', { class: 'pw-time', 'aria-hidden': 'true' });
-    const actions = h('div', { class: 'auth-panel' });
-    box.append(mark, title, text, h('div', { class: 'pw-bar', 'aria-hidden': 'true' }, bar), time, live);
-    const say = (t) => { live.textContent = t; };
-    if (methods.includes('totp')) actions.append(h('div', { class: 'auth-alt' }, button('Ввести код вместо этого', { kind: 'ghost', iconName: 'key', onClick: () => codeStep(methods) })));
-    fill(stage, ...head('Подтвердите вход', 'Пароль принят. Остался второй фактор.'), h('div', { class: 'auth-panel' }, box, actions));
-
-    const fail = (t, d) => {
-      stop();
-      box.classList.add('is-fail');
-      title.textContent = t; text.textContent = d; time.textContent = '';
-      say(`${t}. ${d}`);
-      const again = button('Отправить снова', { kind: 'primary', iconName: 'refresh-cw', onClick: () => pushStep(methods) });
-      actions.prepend(again);
-      again.focus();
-    };
-    (async () => {
-      try {
-        const r = await post('/auth/mfa/push');
-        const end = new Date(r.expires_at).getTime();
-        const total = Math.max(1000, end - Date.now());
-        title.textContent = 'Ждём подтверждения на телефоне';
-        say('Запрос отправлен на телефон. Подтвердите вход в приложении MFA Gate.');
-        const tick = () => {
-          const left = Math.max(0, end - Date.now());
-          bar.style.setProperty('--p', String(left / total));
-          const s = Math.ceil(left / 1000);
-          time.textContent = `Осталось ${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
-          if (s === 60 || s === 10) say(`Осталось ${s} секунд`);
-        };
-        tick();
-        timer = setInterval(tick, 1000);
-        while (!ac.signal.aborted) {
-          const s = await api(`/auth/mfa/push/${encodeURIComponent(r.request_id)}`, { query: { wait: 25 }, signal: ac.signal });
-          if (s.status === 'approved') {
-            clearInterval(timer);
-            box.classList.add('is-ok');
-            title.textContent = 'Вход подтверждён';
-            say('Вход подтверждён');
-            text.textContent = 'Открываем панель…';
-            time.textContent = '';
-            setTimeout(() => finish(s.me), 600);
-            return;
-          }
-          if (s.status === 'consumed') return fail('Подтверждение уже использовано', 'Этот запрос подтвердили в другой вкладке или сессии. Отправьте новый.');
-          if (s.status === 'denied') return fail('Запрос отклонён на телефоне', 'Если вход пытались выполнить не вы — смените пароль и сообщите ответственному за безопасность.');
-          if (s.status !== 'pending' || Date.now() > end + 3000) return fail('Время ожидания вышло', 'Телефон не ответил. Проверьте, что на нём есть интернет, и отправьте запрос снова.');
-        }
-      } catch (err) {
-        if (err.name === 'AbortError') return;
-        if (err.code === 'password_change_required') return passwordChangeStep();
-        if (err.status === 401) return sessionLost(err);
-        fail('Не удалось отправить запрос', err.message);
-      }
-    })();
+    const w = pushWait({
+      start: () => post('/auth/mfa/push'),
+      poll: (id, signal) => api(`/auth/mfa/push/${encodeURIComponent(id)}`, { query: { wait: 25 }, signal }),
+      text: 'Откройте MFA Gate на привязанном телефоне и подтвердите вход в панель.',
+      doneText: 'Открываем панель…',
+      onApproved: finish,
+      retry: () => pushStep(methods),
+      onError: (err) => {
+        if (err.code === 'password_change_required') { passwordChangeStep(); return true; }
+        if (err.status === 401) { sessionLost(err); return true; }
+        return false;
+      },
+      alt: methods.includes('totp') ? button('Ввести код вместо этого', { kind: 'ghost', iconName: 'key', onClick: () => codeStep(methods) }) : null,
+    });
+    stop = w.stop;
+    fill(stage, ...head('Подтвердите вход', 'Пароль принят. Остался второй фактор.'), w.el);
   }
 
   // -------------------------------------------------------------- первичная настройка TOTP

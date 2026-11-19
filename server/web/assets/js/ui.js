@@ -569,3 +569,84 @@ export function pageHead({ title, count, back, desc, actions, meta }) {
       meta ? h('div', { class: 'head-meta' }, meta) : null),
     actions && actions.filter(Boolean).length ? h('div', { class: 'page-actions' }, actions) : null);
 }
+
+// ------------------------------------------------------------------ тема
+const THEME_KEY = 'mfa_gate.theme';
+function getTheme() { try { return localStorage.getItem(THEME_KEY) || 'auto'; } catch { return 'auto'; } }
+function setTheme(t) {
+  if (t === 'auto') document.documentElement.removeAttribute('data-theme');
+  else document.documentElement.setAttribute('data-theme', t);
+  try { if (t === 'auto') localStorage.removeItem(THEME_KEY); else localStorage.setItem(THEME_KEY, t); } catch { /* приватный режим — тема до перезагрузки */ }
+}
+export const themeSwitch = () => segmented([
+  { value: 'auto', icon: 'monitor', ariaLabel: 'Тема как в системе', title: 'Как в системе' },
+  { value: 'light', icon: 'sun', ariaLabel: 'Светлая тема', title: 'Светлая' },
+  { value: 'dark', icon: 'moon', ariaLabel: 'Тёмная тема', title: 'Тёмная' },
+], getTheme(), setTheme, 'Тема оформления');
+
+// ------------------------------------------------------------------ ожидание push (вход в панель и в портал)
+// start() открывает запрос, poll(id, signal) ждёт решения; onError(err) возвращает true, если ошибку обработал вызывающий.
+export function pushWait({ start, poll, text, doneText, onApproved, onError, retry, alt }) {
+  const ac = new AbortController();
+  let timer = 0;
+  const stop = () => { ac.abort(); clearInterval(timer); };
+  const box = h('div', { class: 'push-wait' });
+  // живая область — только смена состояния и рубежи 1:00 / 0:10, а не каждая секунда таймера
+  const live = h('p', { class: 'sr-only', role: 'status', 'aria-live': 'polite' });
+  const mark = h('div', { class: 'pw-mark', 'aria-hidden': 'true' }, h('span', { class: 'a' }), h('span', { class: 'b' }));
+  const title = h('p', { class: 'pw-title', text: 'Отправляем запрос на телефон…' });
+  const textEl = h('p', { class: 'pw-text', text });
+  const bar = h('i');
+  const time = h('p', { class: 'pw-time', 'aria-hidden': 'true' });
+  const actions = h('div', { class: 'auth-panel' });
+  box.append(mark, title, textEl, h('div', { class: 'pw-bar', 'aria-hidden': 'true' }, bar), time, live);
+  const say = (t) => { live.textContent = t; };
+  if (alt) actions.append(h('div', { class: 'auth-alt' }, alt));
+  const fail = (t, d) => {
+    stop();
+    box.classList.add('is-fail');
+    title.textContent = t; textEl.textContent = d; time.textContent = '';
+    say(`${t}. ${d}`);
+    const again = button('Отправить снова', { kind: 'primary', iconName: 'refresh-cw', onClick: retry });
+    actions.prepend(again);
+    again.focus();
+  };
+  (async () => {
+    try {
+      const r = await start();
+      const end = new Date(r.expires_at).getTime();
+      const total = Math.max(1000, end - Date.now());
+      title.textContent = 'Ждём подтверждения на телефоне';
+      say('Запрос отправлен на телефон. Подтвердите вход в приложении MFA Gate.');
+      const tick = () => {
+        const left = Math.max(0, end - Date.now());
+        bar.style.setProperty('--p', String(left / total));
+        const s = Math.ceil(left / 1000);
+        time.textContent = `Осталось ${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+        if (s === 60 || s === 10) say(`Осталось ${s} секунд`);
+      };
+      tick();
+      timer = setInterval(tick, 1000);
+      while (!ac.signal.aborted) {
+        const s = await poll(r.request_id, ac.signal);
+        if (s.status === 'approved') {
+          clearInterval(timer);
+          box.classList.add('is-ok');
+          title.textContent = 'Вход подтверждён';
+          say('Вход подтверждён');
+          textEl.textContent = doneText;
+          time.textContent = '';
+          setTimeout(() => onApproved(s.me), 600);
+          return;
+        }
+        if (s.status === 'consumed') return fail('Подтверждение уже использовано', 'Этот запрос подтвердили в другой вкладке или сессии. Отправьте новый.');
+        if (s.status === 'denied') return fail('Запрос отклонён на телефоне', 'Если вход пытались выполнить не вы — смените пароль и сообщите ответственному за безопасность.');
+        if (s.status !== 'pending' || Date.now() > end + 3000) return fail('Время ожидания вышло', 'Телефон не ответил. Проверьте, что на нём есть интернет, и отправьте запрос снова.');
+      }
+    } catch (err) {
+      if (err.name === 'AbortError' || onError(err)) return;
+      fail('Не удалось отправить запрос', err.message);
+    }
+  })();
+  return { el: h('div', { class: 'auth-panel' }, box, actions), stop };
+}

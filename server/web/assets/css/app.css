@@ -748,3 +748,44 @@ details[open] > summary { margin-bottom: var(--s2); }
 /* подсказка о копировании у поля секрета (видна и внутри модального окна) */
 .copy-note { display: flex; align-items: center; gap: var(--s2); font-size: var(--f14); line-height: 1.5; color: var(--ok); }
 .copy-note[data-s="warning"] { color: var(--warning); }
+
+/* ---------------------------------------------------------------- портал сотрудника (/): та же система, без боковой панели */
+.portal { min-height: 100vh; display: flex; flex-direction: column; }
+.portal-top { position: sticky; top: 0; z-index: 20; background: var(--glass-strong); border-bottom: 1px solid var(--glass-line); -webkit-backdrop-filter: blur(var(--blur)); backdrop-filter: blur(var(--blur)); }
+.portal-bar { max-width: calc(var(--container) + 2 * var(--pad)); margin: 0 auto; padding: var(--s2) var(--pad); min-height: 72px; display: flex; align-items: center; justify-content: space-between; gap: var(--s4); }
+.portal-bar .brand-text { display: grid; }
+.brand-sub { font: 500 var(--f12)/1.5 var(--sans); letter-spacing: 0; color: var(--muted); }
+.portal-tools { display: flex; align-items: center; gap: var(--s3); min-width: 0; }
+.portal-tools .menu-wrap { min-width: 0; }
+.portal-tools .who-btn { display: flex; align-items: center; gap: var(--s3); width: auto; max-width: 280px; min-height: 48px; box-shadow: none; }
+.portal-tools .menu { right: 0; left: auto; }
+.ledger[data-n="3"] { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.stack-s { display: grid; gap: var(--s3); align-content: start; }
+.methods { display: grid; gap: var(--s3); }
+button.choice { width: 100%; font: inherit; color: var(--text); text-align: left; }
+button.choice:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.choice.method .c-title { flex-wrap: wrap; }
+.choice.method .chip { flex: none; max-width: none; }
+.factor { display: flex; align-items: center; gap: var(--s3); min-width: 0; }
+.f-ic { width: 40px; height: 40px; flex: none; display: grid; place-items: center; border-radius: var(--r2); background: var(--accent-soft); color: var(--accent-ink); }
+.sessions { display: grid; }
+.sessions li { display: flex; align-items: center; justify-content: space-between; gap: var(--s3); min-height: 64px; padding: var(--s2) var(--s5); border-top: 1px solid var(--line); }
+.sessions li:first-child { border-top: 0; }
+.sessions .chip { flex: none; max-width: none; }
+.codes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--s2) var(--s4); padding: var(--s4); list-style: decimal inside; border: 1px solid var(--line-strong); border-radius: var(--r2); background: var(--surface); color: var(--muted); }
+.codes code { font: 500 var(--f16)/1.5 var(--mono); color: var(--text); letter-spacing: .04em; }
+@media (max-width: 1023px) { .ledger[data-n="3"] .cell:nth-child(3) { border-left: 1px solid var(--line); border-top: 0; } }
+@media (max-width: 767px) {
+  .portal-bar { min-height: 64px; }
+  .portal-bar .brand-text { display: none; }   /* на телефоне в шапке только знак: подпись не помещается рядом с темой и профилем */
+  .portal-tools .who-text, .portal-tools .who-btn > .ic { display: none; }
+  .portal-tools .who-btn { flex: none; width: 48px; min-width: 48px; padding: var(--s1); border-radius: var(--r-pill); justify-content: center; }
+  .portal-tools .seg button { min-width: 44px; }
+  .ledger[data-n="3"] { grid-template-columns: minmax(0, 1fr); }
+  .ledger[data-n="3"] .cell { border-left: 0; min-height: 0; }
+  .ledger[data-n="3"] .cell + .cell { border-top: 1px solid var(--line); }
+  .sessions li { padding: var(--s2) var(--s4); }
+  .codes { grid-template-columns: minmax(0, 1fr); }
+}
+.code-block { margin: 0; padding: var(--s4) var(--s5); overflow-x: auto; font: 400 var(--f12)/1.5 var(--mono); color: var(--text); background: var(--sunken); border-top: 1px solid var(--glass-line); border-radius: 0 0 calc(var(--r3) - 1px) calc(var(--r3) - 1px); }
+.code-block:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }

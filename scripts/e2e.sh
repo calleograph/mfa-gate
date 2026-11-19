@@ -38,6 +38,7 @@ sed -i -e "s|^COMPOSE_PROJECT_NAME=.*|COMPOSE_PROJECT_NAME=$NAME|" \
   -e "s|^MFA_GATE_IMAGE=.*|MFA_GATE_IMAGE=mfa-gate|" -e "s|^MFA_GATE_VERSION=.*|MFA_GATE_VERSION=0.1.0|" \
   -e "s|^MFA_GATE_DATA=.*|MFA_GATE_DATA=$WORK/data|" -e "s|^MFA_GATE_BACKUPS=.*|MFA_GATE_BACKUPS=$WORK/backups|" \
   -e "s|^MFA_GATE_PUBLIC_URL=.*|MFA_GATE_PUBLIC_URL=http://127.0.0.1:$HTTP_PORT|" \
+  -e "s|^MFA_GATE_DEVICE_URL=.*|MFA_GATE_DEVICE_URL=http://device.e2e.invalid:$HTTP_PORT|" \
   -e "s|^MFA_GATE_HTTP_PORT=.*|MFA_GATE_HTTP_PORT=$HTTP_PORT|" \
   -e "s|^MFA_GATE_RADIUS_BIND=.*|MFA_GATE_RADIUS_BIND=127.0.0.1|" -e "s|^MFA_GATE_RADIUS_PORT=.*|MFA_GATE_RADIUS_PORT=$RADIUS_PORT|" \
   -e "s|^MFA_GATE_PUSH_TIMEOUT=.*|MFA_GATE_PUSH_TIMEOUT=10|" -e "s|^MFA_GATE_COOKIE_SECURE=.*|MFA_GATE_COOKIE_SECURE=false|" \
@@ -56,6 +57,7 @@ SUBNET="$(docker network inspect "${NAME}_backend" -f '{{(index .IPAM.Config 0).
 step "сквозные тесты (RADIUS → push → подтверждение)"
 if MFA_GATE_TEST_URL="http://127.0.0.1:$HTTP_PORT" MFA_GATE_TEST_RADIUS="127.0.0.1:$RADIUS_PORT" MFA_GATE_TEST_KEY="$KEY" \
    MFA_GATE_TEST_ADMIN="e2e-root:$ADMIN_PW" MFA_GATE_TEST_CLIENT_CIDR="$SUBNET" MFA_GATE_TEST_PUSH_TIMEOUT=10 \
+   MFA_GATE_TEST_DEVICE_HOST=device.e2e.invalid \
    "$ROOT/server/.venv/bin/pytest" -q -p no:cacheprovider "$ROOT/server/tests/test_stack.py" 2>&1 | tee "$WORK/pytest.txt" | tail -n 3; then
   :
 fi

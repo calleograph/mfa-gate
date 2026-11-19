@@ -23,3 +23,28 @@
 - Основные файлы: `install.sh`, `deploy/{mfagatectl,compose.yml,.env.example}`, `server/mfa_gate/api/{auth,deps,device,manage}.py`, `server/mfa_gate/{cli,config}.py`, `server/mfa_gate/services/{authflow,ldap,health}.py`, `server/web/**`, `android/**`, `integrations/openvpn/`, `scripts/{radius_load.py,publish-wiki.sh,e2e.sh}`, `.github/workflows/*`, `README.md`, `wiki/`, `docs/**`, `CLAUDE.md`.
 - Результат: юнит 60, сквозные 24, LDAP 17, Docker-стенд 14/14, Android 31+31; на чистом Ubuntu Server: установка из GitHub тремя командами, повторная установка и удаление с данными, панель по HTTP, LDAP с диагностикой, 23/24 сквозных теста по сети (24-й пройден вручную), доменный пользователь RADIUS + push → Accept, вложенные группы в политиках.
 - Незавершено: реальный VPN-шлюз и телефон; ключ подписи Android (секреты в GitHub не заданы — нет разрешения на их запись); GitHub Wiki не инициализирована; рабочие файлы Laravel остаются в корне вне Git (удаление/перемещение не разрешено автоматическим режимом).
+
+## 2026-11-19 — выпуск 0.2.0; 0.3.0: личный кабинет сотрудника, внешний адрес телефонов, профиль Ideco
+- Сделано: тег v0.2.0 — образ `ghcr.io/calleograph/mfa-gate:0.2.0` (скачивается анонимно) и тестовые APK в pre-release. По продуктовому видению комиссии (корпоративная платформа второго фактора: кабинет сотрудника, комната администратора, VPN) приняты и реализованы решения ADR 0014–0017:
+  - личный кабинет на `/`: вход доменной учётной записью; мастер первичной настройки — TOTP по умолчанию, телефон по политике; вход со вторым фактором — TOTP, push или резервный код; свои способы входа (последний удалить нельзя), 10 резервных кодов, история, сеансы;
+  - панель переехала на `/admin/`, старые закладки перенаправляются;
+  - первичная настройка по одному паролю разрешена только при соблюдении всех условий: из `MFA_GATE_PORTAL_ENROLL_NETWORKS`, для `MFA_GATE_PORTAL_ENROLL_GROUPS`, до первой регистрации фактора или по разрешению администратора на 24 ч. Подтверждение фактора гасит разрешение и неиспользованные ссылки привязки, выпущенные самим сотрудником;
+  - `MFA_GATE_DEVICE_URL` — внешний адрес телефонов в QR. На этом хосте сервер отдаёт только `/api/device/` и `/health/`;
+  - у RADIUS-клиента появился выбор «кто проверяет доменный пароль»: MFA Gate или шлюз. Режим шлюза покрывает Ideco «Логин» и «Логин и OTP-код»: пустой пароль ведёт к push или запросу кода, 6–8 цифр считаются OTP, остальное игнорируется. Режимы сверены с официальной документацией Ideco: таймаут 3–120 с, по умолчанию 4, только PAP;
+  - экран «Адреса и публикация» с конфигурациями nginx и Caddy; внутренний адрес в них ограничен частными сетями;
+  - Android foss: постоянное соединение для уведомлений при закрытом приложении;
+  - документация: `docs/network.md`, `deploy/proxy/`, профиль Ideco, модель угроз, Wiki;
+  - push-ожидание вынесено в общий компонент `ui.pushWait`;
+  - найдена повторными прогонами и исправлена потеря пробуждения в long-poll устройства: событие между запросом к БД и подпиской откладывало показ запроса на весь `wait`. Теперь ожидание идёт отрезками по 2 с, как в `wait_decision`.
+- Основные файлы:
+  - `server/mfa_gate/api/{portal,auth,deps,manage,device,app}.py`, `server/mfa_gate/services/{authflow,publication,health}.py`, `server/mfa_gate/radius/server.py`, `server/mfa_gate/{models,config}.py`, `server/migrations/versions/0004_*`;
+  - `server/web/{index.html,admin.html}`, `server/web/assets/js/{portal,ui,api,app,labels}.js`, `server/web/assets/js/views/{publication,users,integrations,login}.js`, `server/web/assets/css/app.css`;
+  - `server/tests/{test_core,test_stack}.py`, `deploy/{compose.yml,.env.example,proxy/}`, `install.sh`, `scripts/e2e.sh`, `android/app/src/{foss,main}/**`;
+  - `docs/{network.md,adr/0014…0017,threat-model.md,integrations.md,testing.md,protocol/device-api.md,admin-ui.md}`, `wiki/`, `README.md`.
+- Результат:
+  - тесты: юнит 63, LDAP 17, сквозные 28, Docker-стенд 14/14, Android 33+33 и сборка release-APK, в foss нет кода Google;
+  - браузер: кабинет и новые экраны панели на 7 ширинах без замечаний аудита компоновки, консоль без ошибок;
+  - миграция 0004 применена на базе с данными прошлых версий.
+- Незавершено:
+  - не проверено: реальный Ideco с Windows-клиентом, телефон и фоновое соединение foss на устройстве;
+  - не сделано: RADIUS Accounting и активные VPN-сессии, атрибуты ответа по группам, number matching, WebAuthn, Kerberos SSO.

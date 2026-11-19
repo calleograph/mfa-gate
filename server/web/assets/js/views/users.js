@@ -150,6 +150,19 @@ async function setStatus(u, status, reload) {
   }
   reload();
 }
+async function allowReenroll(u, reload) {
+  const ok = await confirmDialog({ title: 'Разрешить повторную настройку?', target: u.display_name ? `${u.login} — ${u.display_name}` : u.login, confirmLabel: 'Разрешить',
+    text: 'В течение 24 часов сотрудник сможет войти в личный кабинет по одному паролю (из сети компании) и настроить новый второй фактор. Используйте, когда телефон потерян: сначала отзовите его. Разрешение гаснет после настройки.',
+    action: () => post(`/users/${u.id}/reenroll`) });
+  if (ok) { toast('Повторная настройка разрешена на 24 часа'); reload(); }
+}
+
+async function resetBackup(u, reload) {
+  const ok = await confirmDialog({ title: 'Сбросить резервные коды?', danger: true, confirmLabel: 'Сбросить', target: u.login,
+    text: 'Все неиспользованные резервные коды перестанут действовать. Сотрудник сможет создать новые в личном кабинете.', action: () => del(`/users/${u.id}/backup-codes`) });
+  if (ok) { toast('Резервные коды сброшены'); reload(); }
+}
+
 async function unlock(u, reload) {
   try { await post(`/users/${u.id}/unlock`); toast('Блокировка снята'); reload(); } catch (err) { toastError(err); }
 }
@@ -213,6 +226,8 @@ export async function userCard(ctx) {
     can('users:write') ? button('Изменить', { iconName: 'pencil', onClick: () => editUser(ctx, u) }) : null,
     can('users:write') ? actionMenu([
       u.locked_until ? { label: 'Снять блокировку', icon: 'lock-open', onSelect: () => unlock(u, reload) } : null,
+      can('devices:write') ? { label: 'Разрешить повторную настройку', icon: 'refresh-cw', onSelect: () => allowReenroll(u, reload) } : null,
+      can('devices:write') && u.backup_codes_left ? { label: 'Сбросить резервные коды', icon: 'list-checks', onSelect: () => resetBackup(u, reload) } : null,
       u.status === 'active'
         ? { label: 'Отключить учётную запись', icon: 'ban', onSelect: () => setStatus(u, 'disabled', reload) }
         : { label: 'Включить учётную запись', icon: 'circle-check', onSelect: () => setStatus(u, 'active', reload) },
@@ -240,6 +255,7 @@ export async function userCard(ctx) {
   if (u.locked_until) warn.push(notice('warning', `Временно заблокирован после неудачных попыток входа до ${fmtDate(u.locked_until)}.`,
     can('users:write') ? button('Снять блокировку', { size: 'sm', iconName: 'lock-open', onClick: () => unlock(u, reload) }) : null));
   if (noFactor) warn.push(notice('warning', 'Нет второго фактора: пользователь не сможет войти, пока не привяжет телефон или TOTP.'));
+  if (u.reenroll_until) warn.push(notice('info', `Разрешена самостоятельная повторная настройка в личном кабинете до ${fmtDate(u.reenroll_until)}.`));
 
   const devices = panel({
     title: 'Телефоны', count: activeDevices.length,
@@ -289,6 +305,7 @@ export async function userCard(ctx) {
       h('dt', { text: 'Роль' }), h('dd', { text: u.admin_role_label || 'Нет доступа к панели' }),
       h('dt', { text: 'Группы' }), h('dd', null, u.groups.length ? h('div', { class: 'chips' }, u.groups.map((g) => chip(g.name))) : '—'),
       u.source === 'ldap' ? [h('dt', { text: 'Группы каталога' }), h('dd', null, u.directory_groups.length ? h('div', { class: 'chips' }, u.directory_groups.filter((g) => !g.includes('=')).slice(0, 12).map((g) => chip(g))) : '—')] : null,
+      h('dt', { text: 'Резервные коды' }), h('dd', { text: u.backup_codes_left ? `осталось ${num(u.backup_codes_left)}` : 'не созданы' }),
       h('dt', { text: 'Последний вход' }), h('dd', { text: fmtDate(u.last_login_at) }),
       h('dt', { text: 'Создан' }), h('dd', { text: fmtDate(u.created_at) }))),
   });

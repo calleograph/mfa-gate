@@ -35,7 +35,7 @@ export ANDROID_HOME=/path/to/android-sdk
 
 | Flavor | Доставка запросов | Зависимости Google |
 | --- | --- | --- |
-| `foss` | long-poll `GET /requests?status=pending&wait=25`, пока открыт экран «Запросы»; в фоне WorkManager раз в 15 минут показывает уведомление о новых запросах | нет |
+| `foss` | long-poll `GET /requests?status=pending&wait=25`, пока открыт экран «Запросы»; при закрытом приложении — тот же long-poll в foreground-службе с постоянным уведомлением (настройка «Мгновенные уведомления», по умолчанию включена); запасной путь — WorkManager раз в 15 минут | нет |
 | `gms` | Firebase Cloud Messaging: сигнал `{type, request_id, device_id}` без данных о входе, затем загрузка запроса с сервера и уведомление; WorkManager как запасной путь | `firebase-messaging` |
 
 В сборке `gms` нет `google-services.json` и плагина google-services. Параметры проекта Firebase организации (`project_id`, `application_id`, `api_key`, `sender_id`) приходят с сервера в `push_config`, и приложение создаёт `FirebaseApp` через `FirebaseOptions.Builder`. Один и тот же APK работает с серверами разных организаций.

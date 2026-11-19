@@ -31,7 +31,7 @@ android {
 
     flavorDimensions += "push"
     productFlavors {
-        // Без сервисов Google: long-poll на открытом экране и проверка WorkManager каждые 15 минут.
+        // Без сервисов Google: long-poll на открытом экране и в foreground-службе, запасной путь — WorkManager каждые 15 минут.
         create("foss") { dimension = "push"; buildConfigField("String", "PUSH_PROVIDER", "\"none\"") }
         // Firebase Cloud Messaging; параметры проекта Firebase приходят с сервера, google-services.json не нужен.
         create("gms") { dimension = "push"; buildConfigField("String", "PUSH_PROVIDER", "\"fcm\"") }

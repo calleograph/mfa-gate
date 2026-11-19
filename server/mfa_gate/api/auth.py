@@ -125,8 +125,7 @@ async def mfa(body: CodeIn, request: Request, session: AsyncSession = Depends(ge
     await login_limiter.check(session, client_ip(request))
     row, user = await _pending_session(request, session)
     _require_password_changed(user)
-    if user.locked_until and user.locked_until > datetime.now(UTC):   # иначе код можно перебирать, заводя новые сессии
-        raise HTTPException(401, {"code": "locked", "message": "Слишком много ошибок, вход временно заблокирован"})
+    check_lock(user)
     if await authflow.verify_totp(session, user, body.code):
         return await _mfa_ok(session, row, user, client_ip(request), "totp")
     now = datetime.now(UTC)
@@ -142,43 +141,57 @@ async def mfa(body: CodeIn, request: Request, session: AsyncSession = Depends(ge
     raise HTTPException(401, {"code": "invalid_otp", "message": "Неверный или уже использованный код"})
 
 
+def check_lock(user: User) -> None:
+    if user.locked_until and user.locked_until > datetime.now(UTC):   # иначе код можно перебирать, заводя новые сессии
+        raise HTTPException(401, {"code": "locked", "message": "Слишком много ошибок, вход временно заблокирован"})
+
+
+async def session_push(session: AsyncSession, row: AdminSession, user: User, ip: str, channel: str, title: str) -> dict:
+    """Push для входа в панель или портал: один открытый запрос на сессию, повторное нажатие возвращает его же."""
+    open_req = await session.scalar(select(AuthRequest).where(
+        AuthRequest.session_ref == row.id, AuthRequest.status == "pending", AuthRequest.expires_at > datetime.now(UTC)).limit(1))
+    if open_req is not None:
+        return {"request_id": str(open_req.id), "expires_at": open_req.expires_at.isoformat()}
+    devices = (await session.scalars(select(Device).where(Device.user_id == user.id, Device.status == "active"))).all()
+    if not devices:
+        raise HTTPException(400, {"code": "no_factor", "message": "Нет привязанных устройств"})
+    req = AuthRequest(login=user.login, channel=channel, client_name=title, source_ip=ip, resource_name=title, status="pending",
+                      session_ref=row.id)
+    await authflow.start_push(session, user, req, devices)
+    await session.commit()
+    return {"request_id": str(req.id), "expires_at": req.expires_at.isoformat()}
+
+
+async def session_push_result(session: AsyncSession, row: AdminSession, user: User, request_id: uuid.UUID, channel: str, wait: int) -> str:
+    await session.commit()   # не держать соединение из пула на время ожидания
+    req = await authflow.wait_decision(sessionmaker(), request_id, time.monotonic() + wait)
+    if req is None or req.user_id != user.id or req.channel != channel or req.session_ref != row.id:
+        raise HTTPException(404, {"code": "not_found", "message": "Запрос не найден"})
+    if req.status == "approved":
+        # одобрение одноразовое: гасим атомарно, повторный опрос (или другая сессия) его не используют
+        used = await session.scalar(update(AuthRequest).where(AuthRequest.id == req.id, AuthRequest.status == "approved")
+                                    .values(status="consumed").returning(AuthRequest.id))
+        return "approved" if used else "consumed"
+    return req.status
+
+
 @router.post("/auth/mfa/push")
 async def mfa_push(request: Request, session: AsyncSession = Depends(get_session)):
     await login_limiter.check(session, client_ip(request))
     row, user = await _pending_session(request, session)
     _require_password_changed(user)
-    if user.locked_until and user.locked_until > datetime.now(UTC):
-        raise HTTPException(401, {"code": "locked", "message": "Слишком много ошибок, вход временно заблокирован"})
-    open_req = await session.scalar(select(AuthRequest).where(
-        AuthRequest.session_ref == row.id, AuthRequest.status == "pending", AuthRequest.expires_at > datetime.now(UTC)).limit(1))
-    if open_req is not None:   # не плодим push: пока открыт запрос этой сессии, возвращаем его
-        return {"request_id": str(open_req.id), "expires_at": open_req.expires_at.isoformat()}
-    devices = (await session.scalars(select(Device).where(Device.user_id == user.id, Device.status == "active"))).all()
-    if not devices:
-        raise HTTPException(400, {"code": "no_factor", "message": "Нет привязанных устройств"})
-    req = AuthRequest(login=user.login, channel="admin", client_name="Панель управления", source_ip=client_ip(request),
-                      resource_name="Панель управления MFA Gate", status="pending", session_ref=row.id)
-    await authflow.start_push(session, user, req, devices)
-    await session.commit()
-    return {"request_id": str(req.id), "expires_at": req.expires_at.isoformat()}
+    check_lock(user)
+    return await session_push(session, row, user, client_ip(request), "admin", "Панель управления MFA Gate")
 
 
 @router.get("/auth/mfa/push/{request_id}")
 async def mfa_push_status(request_id: uuid.UUID, request: Request, wait: int = Query(0, ge=0, le=25),
                           session: AsyncSession = Depends(get_session)):
     row, user = await _pending_session(request, session)
-    await session.commit()   # не держать соединение из пула на время ожидания
-    req = await authflow.wait_decision(sessionmaker(), request_id, time.monotonic() + wait)
-    if req is None or req.user_id != user.id or req.channel != "admin" or req.session_ref != row.id:
-        raise HTTPException(404, {"code": "not_found", "message": "Запрос не найден"})
-    if req.status == "approved":
-        # одобрение одноразовое: гасим атомарно, повторный опрос (или другая сессия) его не используют
-        used = await session.scalar(update(AuthRequest).where(AuthRequest.id == req.id, AuthRequest.status == "approved")
-                                    .values(status="consumed").returning(AuthRequest.id))
-        if used:
-            return {"status": "approved", "me": await _mfa_ok(session, row, user, client_ip(request), "push")}
-        return {"status": "consumed"}
-    return {"status": req.status}
+    status = await session_push_result(session, row, user, request_id, "admin", wait)
+    if status == "approved":
+        return {"status": "approved", "me": await _mfa_ok(session, row, user, client_ip(request), "push")}
+    return {"status": status}
 
 
 async def _require_no_factor(session: AsyncSession, user: User) -> None:
@@ -219,6 +232,7 @@ async def totp_setup_confirm(factor_id: uuid.UUID, body: CodeIn, request: Reques
     if step is None:
         raise HTTPException(400, {"code": "invalid_otp", "message": "Код не подошёл — проверьте время на телефоне"})
     factor.status, factor.last_step = "active", step
+    await authflow.factor_activated(session, user)
     audit(session, "totp.enrolled", actor=user.login, target=str(factor.id), ip=client_ip(request))
     return await _mfa_ok(session, row, user, client_ip(request), "totp_setup")
 

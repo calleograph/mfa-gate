@@ -4,12 +4,14 @@
 - Message-Authenticator обязателен по умолчанию (защита от BlastRADIUS); неверный — пакет отбрасывается: так проявляется неверный секрет.
 - Повтор пакета (тот же адрес, Identifier и Request Authenticator) не создаёт новую транзакцию: ждёт ту же обработку и получает тот же ответ.
 - Push: запрос держится открытым до решения или push_timeout; таймаут шлюза должен быть больше.
+- first_factor=gateway (docs/adr/0016): пароль проверил сам шлюз; пустой User-Password — push или Access-Challenge, 6–8 цифр — OTP.
 """
 from __future__ import annotations
 
 import asyncio
 import ipaddress
 import logging
+import re
 import time
 import uuid
 from dataclasses import dataclass
@@ -27,6 +29,7 @@ from ..services.audit import audit
 from . import packet as rp
 
 log = logging.getLogger("mfa_gate.radius")
+OTP_RE = re.compile(r"\d{6,8}")
 DEDUP_TTL = 90.0          # дольше, чем push_timeout + повторы шлюза
 CLIENTS_RELOAD = 15.0
 
@@ -172,10 +175,11 @@ class RadiusProtocol(asyncio.DatagramProtocol):
 
         login = (pkt.text(rp.USER_NAME) or "").strip()
         raw_password = pkt.get(rp.USER_PASSWORD)
-        if not login or raw_password is None:
+        gateway = client.row.first_factor == "gateway"   # пароль уже проверил этот шлюз (Ideco «Логин» / «Логин и OTP-код»)
+        if not login or (raw_password is None and not gateway):
             return reply(rp.ACCESS_REJECT, "Поддерживается только PAP" if pkt.get(rp.CHAP_PASSWORD) else "Нет имени или пароля")
         try:
-            password = rp.decrypt_password(raw_password, client.secret, pkt.authenticator)
+            password = rp.decrypt_password(raw_password, client.secret, pkt.authenticator) if raw_password is not None else ""
         except rp.PacketError:
             return reply(rp.ACCESS_REJECT, "Некорректный пароль")
         nas_ip = rp.decode_ip(pkt.get(rp.NAS_IP_ADDRESS)) or addr[0]
@@ -196,9 +200,11 @@ class RadiusProtocol(asyncio.DatagramProtocol):
                 await session.commit()
             return reply(rp.ACCESS_ACCEPT if outcome.status == "accept" else rp.ACCESS_REJECT, outcome.message)
 
+        # в режиме шлюза поле пароля — пусто (нужен push или Access-Challenge) либо OTP; остальное не пароль для нас и игнорируется
+        otp = password.strip() if gateway and OTP_RE.fullmatch(password.strip()) else None
         async with smaker() as session:
-            outcome = await authflow.begin(session, login=login, password=password, resource=client.resource, channel="radius",
-                                           client_name=client.row.name, source_ip=source_ip, nas_ip=nas_ip)
+            outcome = await authflow.begin(session, login=login, password=None if gateway else password, otp=otp, resource=client.resource,
+                                           channel="radius", client_name=client.row.name, source_ip=source_ip, nas_ip=nas_ip)
             await session.execute(update(RadiusClient).where(RadiusClient.id == client.row.id).values(last_seen_at=datetime.now(UTC)))
             await session.commit()
 

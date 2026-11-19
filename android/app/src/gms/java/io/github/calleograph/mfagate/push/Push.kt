@@ -21,6 +21,9 @@ import kotlin.coroutines.resume
  * WorkManager остаётся запасным путём: push может задержаться или потеряться, а сервер может не настроить FCM.
  */
 object Push {
+    /** Постоянное соединение не нужно: запросы доставляет FCM. */
+    const val supportsBackgroundConnection = false
+
     /** При привязке токена ещё нет: параметры Firebase приходят в ответе /enroll, токен уходит следом через PUT /push. */
     fun enrollInfo() = PushInfo("none", null)
 

@@ -8,8 +8,8 @@ export const REQUEST_STATUS = {
   expired: ['warning', 'Истекло время'],
   consumed: ['ok', 'Подтверждён'],
 };
-export const CHANNEL = { radius: 'RADIUS', api: 'API', admin: 'Панель' };
-export const METHOD = { push: 'Push', totp: 'TOTP-код', policy: 'Политика', emergency: 'Аварийный код' };
+export const CHANNEL = { radius: 'RADIUS', api: 'API', admin: 'Панель', portal: 'Личный кабинет' };
+export const METHOD = { push: 'Push', totp: 'TOTP-код', policy: 'Политика', emergency: 'Аварийный код', backup_code: 'Резервный код' };
 // Совпадает с authflow.REASONS на сервере: нужен для фильтра (в ответе списка есть reason_text)
 export const REASONS = {
   local_password: 'Неверный пароль (локальная запись)',
@@ -57,6 +57,14 @@ export const AUDIT_EVENT = {
   'device.enrollment_issued': 'Выдана ссылка привязки',
   'device.enrolled': 'Привязан телефон',
   'device.revoked': 'Отозвано устройство',
+  'portal.login': 'Вход в личный кабинет',
+  'portal.mfa': 'Второй фактор в личном кабинете',
+  'portal.enroll_denied': 'Отказ в самостоятельной настройке',
+  'portal.backup_codes_issued': 'Выпущены резервные коды',
+  'portal.backup_code_used': 'Вход по резервному коду',
+  'portal.session_closed': 'Завершён сеанс личного кабинета',
+  'user.reenroll_allowed': 'Разрешена повторная настройка',
+  'user.backup_codes_reset': 'Сброшены резервные коды',
   'totp.issued': 'Выпущен TOTP',
   'totp.enrolled': 'Подключён TOTP',
   'totp.revoked': 'Удалён TOTP',

@@ -1,17 +1,19 @@
 # Веб-панель администратора
 
-Панель — одностраничное приложение в `server/web/`. Сервер (FastAPI) отдаёт `web/index.html` на все пути, кроме `/api/*` и `/health/*`, а файлы `web/assets/*` — по адресу `/assets/`. Сборщика нет: нативные ES-модули, без фреймворков и внешних CDN.
+Панель — одностраничное приложение в `server/web/`. Панель открывается по адресу `/admin/`, личный кабинет сотрудника — по `/` ([ADR 0014](adr/0014-portal-and-admin.md)). Сервер (FastAPI) отдаёт `web/admin.html` на пути `/admin/*`, `web/index.html` (портал, `assets/js/portal.js`) — на остальные пути, кроме `/api/*` и `/health/*`, а файлы `web/assets/*` — по адресу `/assets/`. Сборщика нет: нативные ES-модули, без фреймворков и внешних CDN.
 
 ```
 server/web/
-  index.html                 оболочка: CSS, theme.js, app.js, область тостов
+  admin.html                 оболочка панели: CSS, theme.js, app.js, область тостов
+  index.html                 оболочка личного кабинета: CSS, theme.js, portal.js
   assets/css/app.css         токены «Стекла», сетка, все компоненты, светлая и тёмная темы
   assets/js/theme.js         классический скрипт: применяет сохранённую тему до отрисовки
   assets/js/app.js           сессия, оболочка, хэш-роутинг, права разделов
   assets/js/api.js           fetch-обёртка: CSRF, единый формат ошибок, перевод сообщений валидации
   assets/js/ui.js            компоненты: h(), значки, кнопки, формы, модальные окна, меню, тосты, таблицы
   assets/js/labels.js        подписи статусов, причин отказа, событий журнала
-  assets/js/views/*.js       разделы: login, overview, users, access, integrations, control, crud
+  assets/js/portal.js        личный кабинет сотрудника (вход, первичная настройка, факторы, резервные коды)
+  assets/js/views/*.js       разделы панели: login, overview, users, access, integrations, control, publication, crud
   assets/fonts/              Inter и Manrope (вариативные), JetBrains Mono 400/500; кириллица и латиница; OFL.txt
   assets/img/bg-glass.svg    мягкие волны фона темы «Стекло»
   assets/icons/sprite.svg    Lucide (ISC), LICENSE-lucide.txt; favicon.svg — знак MFA Gate

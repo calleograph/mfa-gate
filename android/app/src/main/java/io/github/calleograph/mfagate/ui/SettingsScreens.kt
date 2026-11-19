@@ -40,6 +40,7 @@ import kotlinx.coroutines.launch
 import io.github.calleograph.mfagate.App
 import io.github.calleograph.mfagate.BuildConfig
 import io.github.calleograph.mfagate.push.Notifier
+import io.github.calleograph.mfagate.push.Push
 import io.github.calleograph.mfagate.ui.theme.MinTap
 import io.github.calleograph.mfagate.ui.theme.Space
 
@@ -95,6 +96,7 @@ fun SettingsScreen(app: App) {
     val activity = ctx.findActivity()
     val scope = rememberCoroutineScope()
     var lock by remember { mutableStateOf(app.vault.appLock) }
+    var instant by remember { mutableStateOf(app.vault.instantNotifications) }
     var error by remember { mutableStateOf<String?>(null) }
 
     fun toggleLock(on: Boolean) {
@@ -118,23 +120,12 @@ fun SettingsScreen(app: App) {
             verticalArrangement = Arrangement.spacedBy(Space.s),
         ) {
             SectionTitle("Безопасность")
-            GlassSurface {
-                Row(
-                    Modifier.fillMaxWidth().heightIn(min = MinTap).toggleable(lock, role = Role.Switch, onValueChange = ::toggleLock).padding(Space.l),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(Space.l),
-                ) {
-                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(Space.xs)) {
-                        Text("Блокировка приложения", style = MaterialTheme.typography.titleMedium)
-                        Text(
-                            "Запрашивать биометрию или PIN при открытии. Подтверждение входа требует их всегда, независимо от этой настройки.",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                    Switch(checked = lock, onCheckedChange = null)
-                }
-            }
+            SwitchRow(
+                "Блокировка приложения",
+                "Запрашивать биометрию или PIN при открытии. Подтверждение входа требует их всегда, независимо от этой настройки.",
+                lock,
+                ::toggleLock,
+            )
             error?.let { ErrorText(it) }
             Text(
                 "Коды TOTP скрыты от скриншотов и записи экрана.",
@@ -149,10 +140,34 @@ fun SettingsScreen(app: App) {
                     if (BuildConfig.PUSH_PROVIDER == "fcm") {
                         "Запросы приходят через Firebase Cloud Messaging, если сервер его настроил. В уведомлении нет данных о входе: подробности приложение загружает с сервера. Запасной путь — проверка каждые 15 минут."
                     } else {
-                        "Сборка без сервисов Google. Пока приложение открыто, запросы появляются сразу; в фоне приложение проверяет их каждые 15 минут и показывает уведомление."
+                        "Сборка без сервисов Google. Пока приложение открыто, запросы появляются сразу. В фоне — через постоянное соединение, если оно включено ниже; запасной путь — проверка каждые 15 минут."
                     },
                     style = MaterialTheme.typography.bodyMedium,
                 )
+            }
+            if (Push.supportsBackgroundConnection) {
+                SwitchRow(
+                    "Мгновенные уведомления",
+                    "Приложение держит постоянное соединение с сервером и показывает постоянное уведомление «Ожидание запросов входа». " +
+                        "Без него запрос в фоне придёт с задержкой до 15 минут.",
+                    instant,
+                ) { on ->
+                    app.vault.instantNotifications = on
+                    instant = on
+                    Push.start(app)
+                }
+                if (instant) {
+                    Panel {
+                        Text(
+                            "Чтобы система не обрывала соединение в режиме сна, отключите для MFA Gate оптимизацию батареи: " +
+                                "найдите приложение в списке (иногда нужно выбрать «Все приложения»).",
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                        SecondaryButton("Экономия заряда", {
+                            runCatching { ctx.startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)) }
+                        }, Modifier.fillMaxWidth().padding(top = Space.s))
+                    }
+                }
             }
 
             SectionTitle("О приложении")
@@ -161,6 +176,23 @@ fun SettingsScreen(app: App) {
                 InfoRow("Версия", "${BuildConfig.VERSION_NAME} (${BuildConfig.FLAVOR})")
                 InfoRow("Лицензия", "Apache-2.0")
             }
+        }
+    }
+}
+
+@Composable
+private fun SwitchRow(title: String, text: String, checked: Boolean, onChange: (Boolean) -> Unit) {
+    GlassSurface {
+        Row(
+            Modifier.fillMaxWidth().heightIn(min = MinTap).toggleable(checked, role = Role.Switch, onValueChange = onChange).padding(Space.l),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(Space.l),
+        ) {
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(Space.xs)) {
+                Text(title, style = MaterialTheme.typography.titleMedium)
+                Text(text, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            Switch(checked = checked, onCheckedChange = null)
         }
     }
 }

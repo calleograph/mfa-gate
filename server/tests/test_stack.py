@@ -520,3 +520,161 @@ def test_openvpn_script_deferred_auth(ctx, tmp_path):
     while time.monotonic() < deadline and not control.exists():
         time.sleep(0.3)
     assert control.read_text().strip() == "0"
+
+
+# ------------------------------------------------------------------------------------------- портал сотрудника
+class Portal:
+    """Браузер сотрудника: свой адрес через X-Forwarded-For (стенд доверяет шлюзу сети контейнера)."""
+
+    def __init__(self, ip: str = "10.20.30.40") -> None:
+        self.c = httpx.Client(base_url=URL, timeout=40, headers={"X-Forwarded-For": ip})
+        self.csrf = ""
+
+    def login(self, login: str, password: str = "Correct-Horse-Battery-1", status: int = 200) -> dict:
+        r = self.c.post("/api/v1/portal/login", json={"login": login, "password": password})
+        assert r.status_code == status, r.text
+        data = r.json()
+        self.csrf = data.get("csrf", "")
+        return data
+
+    def post(self, path: str, json: dict | None = None) -> httpx.Response:
+        return self.c.post("/api/v1/portal" + path, json=json or {}, headers={"X-CSRF-Token": self.csrf})
+
+    def get(self, path: str, **params) -> httpx.Response:
+        return self.c.get("/api/v1/portal" + path, params=params)
+
+
+def _enroll_by_uri(ctx: Ctx, uri: str, name: str) -> Phone:
+    q = parse_qs(urlparse(uri).query)
+    key = ec.generate_private_key(ec.SECP256R1())
+    spki = key.public_key().public_bytes(serialization.Encoding.DER, serialization.PublicFormat.SubjectPublicKeyInfo)
+    data = ctx.ok(ctx.dev.post("/api/device/v1/enroll", json={"token": q["token"][0], "device_name": name, "public_key": b64u(spki)}))
+    return Phone(data["device_id"], data["device_secret"], key)
+
+
+def test_portal_first_enrollment_totp_and_backup_codes(ctx):
+    ctx.user("pat")
+    login = f"pat-{RUN}"
+    p = Portal()
+    assert p.login(login, "wrong", status=401)["message"]
+    st = p.login(login)
+    assert st["stage"] == "enroll" and "totp" in st["methods"] and st["factors"]["totp"] == []
+    assert p.get("/history").status_code == 401, "до второго фактора кабинет закрыт"
+    assert p.c.post("/api/v1/portal/totp").status_code == 403, "без CSRF изменения запрещены"
+    setup = ctx.ok(p.post("/totp"))
+    assert p.post(f"/totp/{setup['factor_id']}/confirm", {"code": "000000"}).status_code == 400
+    st = ctx.ok(p.post(f"/totp/{setup['factor_id']}/confirm", {"code": totp.code_at(setup["secret"])}))
+    assert st["stage"] == "ready" and len(st["factors"]["totp"]) == 1
+    assert p.c.delete(f"/api/v1/portal/totp/{st['factors']['totp'][0]['id']}", headers={"X-CSRF-Token": p.csrf}).status_code == 409, \
+        "последний фактор удалить нельзя"
+    assert [s for s in ctx.ok(p.get("/sessions"))["items"] if s["current"]]
+    codes = ctx.ok(p.post("/backup-codes"))["codes"]
+    assert len(codes) == 10 and len(set(codes)) == 10
+
+    # сессия портала не открывает панель управления, даже если подставить её токен в cookie панели
+    token = p.c.cookies.get("mfa_gate_portal")
+    assert httpx.get(f"{URL}/api/v1/auth/me", cookies={"mfa_gate_session": token}).status_code == 401
+
+    # второй вход: фактор уже есть → только второй фактор; резервный код одноразовый
+    q = Portal()
+    st = q.login(login)
+    assert st["stage"] == "mfa" and set(st["login_methods"]) == {"totp", "backup"}
+    assert q.post("/totp").status_code == 403, "добавлять факторы по одному паролю нельзя"
+    assert ctx.ok(q.post("/mfa", {"code": codes[0].upper()}))["stage"] == "ready"
+    r = Portal()
+    r.login(login)
+    assert r.post("/mfa", {"code": codes[0]}).status_code == 401
+    assert ctx.ok(r.post("/mfa", {"code": codes[1]}))["factors"]["backup_codes_left"] == 8
+    # чужой сеанс завершается из кабинета
+    other = [s for s in ctx.ok(r.get("/sessions"))["items"] if not s["current"]][0]
+    ctx.ok(r.c.delete(f"/api/v1/portal/sessions/{other['id']}", headers={"X-CSRF-Token": r.csrf}))
+    assert r.c.delete("/api/v1/portal/sessions/%25%25%25%25%25%25%25%25%25%25%25%25%25%25%25%25",
+                      headers={"X-CSRF-Token": r.csrf}).status_code == 404
+
+
+def test_portal_enrollment_rules_phone_and_recovery(ctx):
+    user = ctx.user("ron")
+    login = f"ron-{RUN}"
+    outside = Portal("203.0.113.9")
+    st = outside.login(login)
+    assert st["stage"] == "enroll_denied" and st["enroll_denied"] == "network"
+    assert outside.post("/devices/enrollment").status_code == 403
+
+    p = Portal()
+    assert p.login(login)["stage"] == "enroll"
+    stale = ctx.ok(p.post("/devices/enrollment"))["uri"]   # вторая ссылка той же сессии «только пароль»
+    phone = _enroll_by_uri(ctx, ctx.ok(p.post("/devices/enrollment"))["uri"], "ron-phone")
+    q = parse_qs(urlparse(stale).query)
+    spki = ec.generate_private_key(ec.SECP256R1()).public_key().public_bytes(serialization.Encoding.DER, serialization.PublicFormat.SubjectPublicKeyInfo)
+    assert ctx.dev.post("/api/device/v1/enroll", json={"token": q["token"][0], "device_name": "late", "public_key": b64u(spki)}).status_code == 410, \
+        "после подтверждения фактора прежние ссылки привязки сотрудника гаснут"
+    st = ctx.ok(p.get("/me"))
+    assert st["stage"] == "mfa" and st["login_methods"] == ["push"], "после привязки — подтверждение на телефоне"
+    started = ctx.ok(p.post("/mfa/push"))
+    item = ctx.pending(phone)[0]
+    assert item["resource"] == "Личный кабинет MFA Gate"
+    ctx.ok(ctx.decide(phone, item, "approve"))
+    assert ctx.ok(p.get(f"/mfa/push/{started['request_id']}", wait=5))["status"] == "approved"
+    assert ctx.ok(p.get("/me"))["stage"] == "ready"
+
+    # телефон потерян: администратор отзывает его — заново по одному паролю нельзя, нужна его санкция
+    ctx.ok(ctx.api.post(f"/api/v1/devices/{phone.device_id}/revoke"))
+    assert Portal().login(login)["enroll_denied"] == "reenroll"
+    ctx.ok(ctx.api.post(f"/api/v1/users/{user['id']}/reenroll"))
+    assert ctx.ok(ctx.api.get(f"/api/v1/users/{user['id']}"))["reenroll_until"]
+    assert Portal("203.0.113.9").login(login)["enroll_denied"] == "network", "разрешение не отменяет ограничение по сетям"
+    again = Portal()
+    assert again.login(login)["stage"] == "enroll"
+    setup = ctx.ok(again.post("/totp"))
+    ctx.ok(again.post(f"/totp/{setup['factor_id']}/confirm", {"code": totp.code_at(setup["secret"])}))
+    assert ctx.ok(ctx.api.get(f"/api/v1/users/{user['id']}"))["reenroll_until"] is None, "разрешение гаснет после настройки"
+
+
+def test_radius_gateway_first_factor(ctx):
+    """Шлюз сам проверил пароль (Ideco «Логин» / «Логин и OTP-код»): пустой пароль — push, цифры — OTP, иное — не пароль."""
+    gil = ctx.user("gil")
+    phone = ctx.enroll("gil")
+    gwt = ctx.user("gwt")
+    issued = ctx.ok(ctx.api.post(f"/api/v1/users/{gwt['id']}/totp"))
+    ctx.ok(ctx.api.post(f"/api/v1/users/{gwt['id']}/totp/{issued['factor_id']}/confirm", json={"code": totp.code_at(issued["secret"])}))
+    rc = ctx.radius_client
+    body = {k: rc[k] for k in ("resource_id", "name", "address", "nas_identifier", "enabled")}
+    ctx.ok(ctx.api.put(f"/api/v1/radius-clients/{rc['id']}", json={**body, "first_factor": "gateway"}))
+    try:
+        deadline = time.monotonic() + 40   # RADIUS перечитывает клиентов раз в 10–15 с
+        while time.monotonic() < deadline:
+            # пароль «не код» в режиме шлюза игнорируется → запрос кода; в режиме mfa_gate это неверный пароль
+            probe, _ = radius(gwt["login"], "domain-password-checked-by-gateway", ctx.radius_secret, timeout=3)
+            if probe is not None and probe.code == rp.ACCESS_CHALLENGE:
+                break
+            time.sleep(3)
+        else:
+            pytest.fail("RADIUS не подхватил режим gateway за 40 с")
+        # TOTP-пользователь: Access-Challenge и ответ кодом (режим «Логин»); «Логин и OTP-код» — код сразу
+        time.sleep(30 - time.time() % 30 + 0.5)
+        ok, _ = radius(gwt["login"], totp.code_at(issued["secret"]), ctx.radius_secret)
+        assert ok.code == rp.ACCESS_ACCEPT
+        bad, _ = radius(gwt["login"], "000000", ctx.radius_secret)
+        assert bad.code == rp.ACCESS_REJECT
+        # push-пользователь: пустой пароль, запрос держится до решения на телефоне
+        t, box = in_thread(radius, gil["login"], "", ctx.radius_secret, timeout=PUSH_TIMEOUT + 10)
+        ctx.ok(ctx.decide(phone, ctx.pending(phone)[0], "approve"))
+        t.join()
+        assert box["result"][0].code == rp.ACCESS_ACCEPT
+    finally:
+        ctx.ok(ctx.api.put(f"/api/v1/radius-clients/{rc['id']}", json={**body, "first_factor": "mfa_gate"}))
+        time.sleep(16)   # остальные тесты рассчитывают на проверку пароля MFA Gate
+
+
+def test_portal_and_admin_addresses(ctx):
+    assert "личный кабинет" in httpx.get(f"{URL}/").text
+    assert "панель управления" in httpx.get(f"{URL}/admin/").text
+    assert httpx.get(f"{URL}/admin").status_code == 308
+    pub = ctx.ok(ctx.api.get("/api/v1/system/publication"))
+    assert {c["id"] for c in pub["components"]} >= {"portal", "admin", "device", "radius"} and "/api/device/" in pub["nginx"]
+    host = os.environ.get("MFA_GATE_TEST_DEVICE_HOST")
+    if not host:
+        pytest.skip("отдельный адрес Device API на стенде не задан")
+    assert httpx.get(f"{URL}/", headers={"Host": host}).status_code == 404, "внешний адрес телефонов не отдаёт портал"
+    assert httpx.get(f"{URL}/api/v1/portal/me", headers={"Host": host}).status_code == 404
+    assert httpx.get(f"{URL}/api/device/v1/ping", headers={"Host": host}).status_code == 401, "Device API доступен"

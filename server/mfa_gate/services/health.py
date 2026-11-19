@@ -79,11 +79,19 @@ async def checks(session: AsyncSession) -> dict:
                       "" if providers else "Задайте MFA_GATE_PUSH_FCM_CREDENTIALS_FILE (см. docs/push.md)"))
 
     if not cfg.public_url.startswith("https://"):
-        out.append(_check("Публичный адрес", "warning", f"{cfg.public_url} — не HTTPS",
-                          "По HTTP — только изолированная сеть: телефоны привязываются после явного подтверждения риска. "
-                          "Для эксплуатации настройте HTTPS через reverse proxy"))
+        out.append(_check("Адрес портала", "warning", f"{cfg.public_url} — не HTTPS",
+                          "По HTTP — только изолированная сеть. Для эксплуатации настройте HTTPS через reverse proxy"))
     else:
-        out.append(_check("Публичный адрес", "ok", cfg.public_url))
+        out.append(_check("Адрес портала", "ok", cfg.public_url))
+    if not cfg.device_url.startswith("https://"):
+        out.append(_check("Адрес для телефонов", "warning", f"{cfg.device_url} — не HTTPS",
+                          "Телефоны привязываются только после явного подтверждения риска. Опубликуйте /api/device/ наружу "
+                          "по HTTPS и задайте MFA_GATE_DEVICE_URL (раздел «Адреса и публикация»)"))
+    elif cfg.device_url == cfg.public_url.rstrip("/"):
+        out.append(_check("Адрес для телефонов", "ok", f"{cfg.device_url} — тот же, что у портала",
+                          "Чтобы подтверждать VPN из дома, телефону нужен внешний адрес: задайте MFA_GATE_DEVICE_URL"))
+    else:
+        out.append(_check("Адрес для телефонов", "ok", cfg.device_url))
 
     clients = await session.scalar(select(func.count()).select_from(RadiusClient).where(RadiusClient.enabled))
     out.append(_check("RADIUS-клиенты", "ok" if clients else "warning", f"активных: {clients}",

@@ -8,6 +8,10 @@
 
 Общие требования к любому шлюзу (подробно — [Настройка RADIUS](Настройка-RADIUS.md), шаг 3): PAP, Message-Authenticator, таймаут ≥ 60 с, 1–2 повтора, Accounting выключен.
 
+Кто проверяет пароль, задаёт поле RADIUS-клиента «Первый фактор»: `mfa_gate` (по умолчанию) — шлюз пересылает пароль, MFA Gate проверяет его в AD или локально; `gateway` — шлюз сам проверил доменный пароль и присылает пустой пароль или код TOTP. Режим `gateway` ставьте только тому шлюзу, который действительно проверяет пароль сам (например, [Ideco](Подключение-Ideco.md)); подробно — [docs/integrations.md](https://github.com/calleograph/mfa-gate/blob/main/docs/integrations.md#первый-фактор-mfa_gate-и-gateway). Все разделы ниже, кроме Ideco, рассчитаны на `mfa_gate`.
+
+Телефоны сотрудников подтверждают вход до подключения VPN, поэтому им нужен доступ к Device API из той сети, где они находятся: [Сетевая схема и публикация](Сетевая-схема-и-публикация.md).
+
 ## Проверка после настройки любого шлюза
 
 1. Вход с верным паролем → телефон получает запрос → «Подтвердить» → VPN подключается.
@@ -41,7 +45,7 @@ EOF
 sudo chown root:nogroup /etc/openvpn/mfa-gate.conf && sudo chmod 640 /etc/openvpn/mfa-gate.conf
 ```
 
-Файл `mfa-gate-openvpn.sh` возьмите из репозитория: `integrations/openvpn/mfa-gate-openvpn.sh`. После перехода на HTTPS замените `MFA_GATE_URL` на `https://mfa.example.org`.
+Файл `mfa-gate-openvpn.sh` возьмите из репозитория: `integrations/openvpn/mfa-gate-openvpn.sh`. После перехода на HTTPS замените `MFA_GATE_URL` на `https://mfa.example.org` — внутренний адрес (`MFA_GATE_PUBLIC_URL`). Внешний адрес Device API (`auth.example.org`) не подходит: REST API на нём не публикуется. Скрипт работает через REST API и сам передаёт пароль на проверку MFA Gate, поле «Первый фактор» RADIUS-клиента к нему не относится.
 
 Скрипт выполняется от имени пользователя OpenVPN после понижения прав, поэтому файл читаем для группы. Укажите вместо `nogroup` группу из строки `group` вашего `server.conf` (часто `nogroup` или `openvpn`). **Как проверить:** `sudo -u nobody cat /etc/openvpn/mfa-gate.conf` выводит содержимое (подставьте пользователя из строки `user`).
 
@@ -107,7 +111,7 @@ hand-window 75
 
 > Требует проверки на стенде.
 
-Схема: RRAS → NPS → группа удалённых RADIUS-серверов → MFA Gate. MFA Gate должен получить пароль по PAP. Клиенты Windows VPN (SSTP, IKEv2, L2TP) обычно используют MS-CHAPv2 или EAP, из которых пароль не извлечь: **если NPS сам проверяет MS-CHAPv2 и пересылает только имя, вход работать не будет** (режим «только второй фактор» по RADIUS не реализован). Подходит для клиентов, которые отправляют пароль по PAP.
+Схема: RRAS → NPS → группа удалённых RADIUS-серверов → MFA Gate. MFA Gate должен получить пароль по PAP. Клиенты Windows VPN (SSTP, IKEv2, L2TP) обычно используют MS-CHAPv2 или EAP, из которых пароль не извлечь: **если NPS сам проверяет MS-CHAPv2, вход работать не будет**. Режим `gateway` здесь не помогает: NPS в режиме пересылки передаёт запрос MS-CHAPv2 целиком, а не пустой пароль или код по PAP. Подходит для клиентов, которые отправляют пароль по PAP (RADIUS-клиент с «Первый фактор» `mfa_gate`).
 
 1. NPS → RADIUS Clients and Servers → **Remote RADIUS Server Groups** → New → сервер `192.0.2.10`, общий секрет `СЕКРЕТ`.
 2. В свойствах сервера, вкладка **Load Balancing**: «Number of seconds without response before request is considered dropped» — **60**; «Maximum number of dropped requests…» — не меньше 2.
@@ -117,20 +121,11 @@ hand-window 75
 
 **Как проверить:** в журнале аудита MFA Gate нет `radius.bad_authenticator` (NPS добавляет Message-Authenticator); в «Истории входов» запрос с ресурсом этого шлюза. RADIUS-клиентом в MFA Gate заводится адрес **сервера NPS**, а не RRAS.
 
-## Ideco UTM / NGFW
+## Ideco NGFW Novum
 
-> Требует проверки на стенде.
+> Не проверено на реальном Ideco.
 
-1. **Пользователи → Внешние каталоги → RADIUS**: адрес `192.0.2.10`, порт `1812`, секрет `СЕКРЕТ`.
-2. **VPN-подключения → Доступ по VPN**: добавьте группу RADIUS и сделайте RADIUS каталогом для нужного правила.
-3. Встроенную двухфакторную аутентификацию Ideco для этого правила не включайте: второй фактор даёт MFA Gate.
-
-Проверьте на стенде:
-
-- для каких протоколов (IKEv2, L2TP/IPsec, SSTP, Ideco Client) пароль уходит по PAP;
-- таймаут ответа RADIUS: в публичной документации его нет. Если он меньше 60 с, уменьшите `MFA_GATE_PUSH_TIMEOUT` ([Настройка RADIUS](Настройка-RADIUS.md), шаг 3);
-- отправляется ли Message-Authenticator;
-- показывает ли Ideco Client окно ввода кода по Access-Challenge и читается ли кириллица.
+Ideco сам проверяет логин и пароль и обращается к MFA Gate как к RADIUS-серверу двухфакторной аутентификации (Пользователи → Аутентификация → Двухфакторная аутентификация → RADIUS-серверы), не как внешний каталог RADIUS. В MFA Gate у RADIUS-клиента Ideco «Первый фактор» — `gateway`, в Ideco «Время ожидания» — 60 с. Пошагово: [Подключение Ideco](Подключение-Ideco.md).
 
 ## Cisco ASA / Secure Client
 

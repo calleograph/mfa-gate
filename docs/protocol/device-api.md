@@ -1,6 +1,6 @@
 # Протокол мобильного устройства (Device API v1)
 
-Контракт между сервером MFA Gate и Android-приложением. Все адреса относительно базового URL сервера (`https://mfa.example.org`). В рабочей установке используйте HTTPS. HTTP допускается для изолированной тестовой сети и первичной настройки: приложение подключается к адресу http:// только после явного подтверждения пользователем.
+Контракт между сервером MFA Gate и Android-приложением. Все адреса относительно базового URL из ссылки привязки — внешнего адреса Device API `MFA_GATE_DEVICE_URL` (например, `https://auth.example.org`; по умолчанию совпадает с `MFA_GATE_PUBLIC_URL`). Наружу через reverse proxy публикуется только префикс `/api/device/` ([ADR 0015](../adr/0015-external-device-api.md)). В рабочей установке используйте HTTPS. HTTP допускается для изолированной тестовой сети и первичной настройки: приложение подключается к адресу http:// только после явного подтверждения пользователем.
 
 ## 1. Ключи и секреты устройства
 
@@ -41,7 +41,7 @@ Content-Type: application/json
   "device_id": "<uuid>",
   "device_secret": "<base64url>",
   "user": {"login": "ivanov", "display_name": "Иванов И."},
-  "server": {"name": "MFA Gate", "url": "https://mfa.example.org"},
+  "server": {"name": "MFA Gate", "url": "https://auth.example.org"},
   "poll_interval": 25
 }
 ```

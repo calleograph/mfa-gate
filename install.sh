@@ -130,7 +130,7 @@ fi
 # shellcheck disable=SC1090
 bash -n "$ENV_FILE" 2>>"$LOG" || fail "файл $ENV_FILE повреждён (синтаксическая ошибка)" "исправьте строку, указанную в журнале, или удалите файл и запустите установку заново"
 set -a; . "$ENV_FILE"; set +a
-info "адрес панели: $MFA_GATE_PUBLIC_URL"
+info "адрес: $MFA_GATE_PUBLIC_URL (личный кабинет), $MFA_GATE_PUBLIC_URL/admin/ (панель)"
 info "RADIUS: UDP $MFA_GATE_RADIUS_BIND:$MFA_GATE_RADIUS_PORT"
 (( running_here )) && info "экземпляр уже запущен — будет обновлён до состояния конфигурации"
 
@@ -163,7 +163,7 @@ fi
 step "Проверка работы"
 ready="$(curl -fsS --max-time 10 "http://127.0.0.1:$MFA_GATE_HTTP_PORT/health/ready" 2>>"$LOG" || true)"
 [[ "$ready" == *'"ok"'* ]] && ok "API отвечает: $ready" || fail "API не отвечает на /health/ready" "sudo $CTL logs api"
-curl -fsS --max-time 10 "http://127.0.0.1:$MFA_GATE_HTTP_PORT/" 2>>"$LOG" | grep -q "MFA Gate" && ok "панель администратора открывается" \
+curl -fsS --max-time 10 "http://127.0.0.1:$MFA_GATE_HTTP_PORT/admin/" 2>>"$LOG" | grep -q "MFA Gate" && ok "панель администратора открывается" \
   || fail "панель не открывается" "sudo $CTL logs api"
 ss -H -lun "sport = :$MFA_GATE_RADIUS_PORT" | grep -q . && ok "RADIUS слушает UDP $MFA_GATE_RADIUS_PORT" || fail "RADIUS не слушает порт $MFA_GATE_RADIUS_PORT" "sudo $CTL logs radius"
 ln -sf "$CTL" /usr/local/bin/mfagatectl && ok "команда управления: mfagatectl (status, logs, update, backup, diagnose …)"
@@ -172,7 +172,8 @@ printf '\n'
 bold "Готово. MFA Gate $MFA_GATE_VERSION установлен."
 cat <<EOF
 
-  Панель администратора:  $MFA_GATE_PUBLIC_URL
+  Панель администратора:  $MFA_GATE_PUBLIC_URL/admin/
+  Личный кабинет:         $MFA_GATE_PUBLIC_URL/   (сотрудники сами настраивают второй фактор)
 EOF
 if [[ -n "$ADMIN_PASSWORD" ]]; then
   cat <<EOF
@@ -188,6 +189,7 @@ cat <<EOF
   Работа идёт по HTTP — только для изолированной сети и первичной настройки.
   HTTPS через reverse proxy: docs/install.md, раздел «HTTPS».
 
-  Дальше: войдите в панель → подключите каталог LDAP/AD → ресурс → RADIUS-клиент → привяжите телефон.
+  Дальше: войдите в панель → подключите каталог LDAP/AD → ресурс → RADIUS-клиент →
+          сотрудники настраивают второй фактор в личном кабинете. Адреса для прокси — раздел «Адреса и публикация».
   Управление: mfagatectl status | logs | update <версия> | backup | diagnose
 EOF

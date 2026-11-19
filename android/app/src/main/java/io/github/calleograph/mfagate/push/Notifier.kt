@@ -105,6 +105,12 @@ object Notifier {
     }
 }
 
+/** Постоянное соединение (foss) нужно, только если оно включено и есть хотя бы одна учётная запись. */
+fun needsConnection(enabled: Boolean, accounts: List<Account>) = enabled && accounts.isNotEmpty()
+
+/** Пауза перед повтором после ошибки: от 2 с с удвоением до минуты; после успеха снова 2 с. */
+fun nextBackoff(ms: Long) = (ms * 2).coerceIn(2_000L, 60_000L)
+
 /** Периодическая проверка (минимальный период WorkManager — 15 минут). */
 class PollWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx, params) {
     override suspend fun doWork(): Result {

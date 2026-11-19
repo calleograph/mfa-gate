@@ -1,6 +1,7 @@
 """Device API v1 — контракт описан в docs/protocol/device-api.md."""
 from __future__ import annotations
 
+import time
 import uuid
 from datetime import UTC, datetime
 
@@ -73,12 +74,13 @@ async def enroll(body: EnrollIn, request: Request, session: AsyncSession = Depen
                     public_key=body.public_key, secret_hash=sha256_hex(secret), last_seen_at=now)
     _set_push(device, body.push)
     session.add(device)
+    await authflow.factor_activated(session, user)
     audit(session, "device.enrolled", actor=user.login, target=str(device.id), ip=client_ip(request), device_name=body.device_name,
           push=device.push_provider)
     await session.commit()
     cfg = settings()
     return {"device_id": str(device.id), "device_secret": secret, "user": {"login": user.login, "display_name": user.display_name},
-            "server": {"name": cfg.server_name, "url": cfg.public_url}, "poll_interval": 25, "push_config": push_config()}
+            "server": {"name": cfg.server_name, "url": cfg.device_url}, "poll_interval": 25, "push_config": push_config()}
 
 
 def _item(req: AuthRequest, with_challenge: bool) -> dict:
@@ -101,8 +103,10 @@ async def requests(status: str | None = Query(None, pattern="^pending$"), wait: 
                    session: AsyncSession = Depends(get_session)):
     if status == "pending":
         items = await _pending(device)
-        if not items and wait:
-            await events.hub.wait(f"user:{device.user_id}", wait)
+        deadline = time.monotonic() + wait
+        # отрезками по 2 с: событие, пришедшее между запросом к БД и подпиской, иначе задержало бы запрос на весь wait
+        while not items and (left := deadline - time.monotonic()) > 0:
+            await events.hub.wait(f"user:{device.user_id}", min(left, 2.0))
             items = await _pending(device)
         return {"items": items, "server_time": datetime.now(UTC).isoformat()}
     rows = (await session.scalars(select(AuthRequest).where(AuthRequest.user_id == device.user_id, AuthRequest.method == "push")

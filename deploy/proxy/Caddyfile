@@ -1,0 +1,53 @@
+# Пример Caddy для MFA Gate: два имени на одном reverse proxy.
+#
+#   mfa.example.org   — внутренний адрес (MFA_GATE_PUBLIC_URL): портал сотрудника /, панель /admin/,
+#                       REST API /api/v1/, Device API, /assets/, /health/*. Только из внутренней сети и VPN.
+#   auth.example.org  — внешний адрес (MFA_GATE_DEVICE_URL): только Device API /api/device/ для телефонов,
+#                       которые должны достучаться до сервера ДО подключения VPN. Всё остальное — 404.
+#
+# MFA Gate слушает HTTP на 127.0.0.1:8080 (MFA_GATE_HTTP_BIND=127.0.0.1, MFA_GATE_HTTP_PORT=8080).
+# Caddy сам ставит X-Forwarded-For (входящему заголовку клиента не доверяет) и X-Forwarded-Proto,
+# передаёт исходный Host и не ограничивает время ответа upstream — long-poll телефонов (до 30 с) проходит.
+# Прокси на другом сервере: добавьте его адрес в MFA_GATE_TRUSTED_PROXIES и поменяйте 127.0.0.1:8080.
+#
+# Установка: /etc/caddy/Caddyfile, заменить имена, сети и сертификаты, `caddy validate --config /etc/caddy/Caddyfile`,
+# затем `systemctl reload caddy`.
+
+# Внутренний адрес: всё приложение.
+mfa.example.org {
+	# Имя не видно из Интернета, поэтому автоматический сертификат Let's Encrypt (HTTP-01/TLS-ALPN-01)
+	# не выпустится. Варианты: файлы корпоративного УЦ (ниже), `tls internal` (свой УЦ Caddy, его корень
+	# раздаётся на компьютеры) или DNS-01 через модуль вашего DNS-провайдера.
+	tls /etc/ssl/mfa-gate/mfa.example.org/fullchain.pem /etc/ssl/mfa-gate/mfa.example.org/privkey.pem
+
+	# Только внутренние сети и пул адресов VPN. Замените примеры своими сетями.
+	@outside not remote_ip 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16
+	respond @outside 403
+
+	request_body {
+		max_size 1MB
+	}
+
+	reverse_proxy 127.0.0.1:8080
+}
+
+# Внешний адрес: только Device API. Сертификат Let's Encrypt Caddy получит сам (нужны DNS-запись
+# и доступ к 80/443 из Интернета); Android ему доверяет.
+auth.example.org {
+	log {
+		output file /var/log/caddy/mfa-gate-device.log
+	}
+
+	handle /api/device/* {
+		request_body {
+			max_size 64KB
+		}
+		# Host передаётся без изменений: по нему MFA Gate отличает внешнее имя и отвечает 404 на всё, кроме Device API.
+		reverse_proxy 127.0.0.1:8080
+	}
+
+	# Портал, панель, REST API, OpenAPI, статика, проверки — снаружи не публикуются.
+	handle {
+		respond 404
+	}
+}

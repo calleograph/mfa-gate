@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="channel_connection">Соединение с сервером</string>
+    <string name="channel_connection_desc">Постоянное уведомление, пока приложение ждёт запросы входа</string>
+    <string name="watch_title">Ожидание запросов входа</string>
+    <string name="watch_text">Отключается в настройках приложения</string>
+</resources>
