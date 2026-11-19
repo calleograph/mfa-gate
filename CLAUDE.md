@@ -32,4 +32,4 @@ cd android && ./gradlew :app:testFossDebugUnitTest :app:assembleFossDebug :app:a
 Не править `deploy/` и `scripts/` во время работающего `scripts/e2e.sh`: bash читает скрипты по ходу выполнения.
 
 ## Выпуск
-Версия — файл `VERSION`, она же в `server/mfa_gate/config.py` и `android/VERSION`; тег `vX.Y.Z` запускает `.github/workflows/release.yml` (образ `ghcr.io/calleograph/mfa-gate:X.Y.Z`, APK, GitHub Release). Без секретов подписи APK подписываются одноразовым ключом, выпуск помечается как предварительный.
+Версия — файл `VERSION`, она же в `server/mfa_gate/config.py` и `android/VERSION`; тег `vX.Y.Z` запускает `.github/workflows/release.yml` (образ `ghcr.io/calleograph/mfa-gate:X.Y.Z`, APK, GitHub Release). Секреты подписи `MFA_GATE_KEYSTORE_*` заданы в репозитории: APK подписаны постоянным ключом (CN=MFA Gate), обновления поверх. Ключ не перевыпускать — иначе обновление поверх сломается у всех. Без секретов (форки) — одноразовый ключ и pre-release.

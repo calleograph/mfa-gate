@@ -114,7 +114,8 @@ class RateLimiter:
 
 
 login_limiter = RateLimiter("login", 20, 60)
-enroll_limiter = RateLimiter("enroll", 10, 60)
+# токен привязки 256 бит — лимит не от подбора, а от наплыва; в день внедрения телефоны офиса выходят через один NAT-адрес
+enroll_limiter = RateLimiter("enroll", 30, 60)
 
 
 @dataclass

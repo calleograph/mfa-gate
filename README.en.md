@@ -1,38 +1,53 @@
+<div align="center">
+
 # MFA Gate
 
-**An open-source, self-hosted multi-factor authentication platform for VPNs and internal applications.**
+### A second factor for VPN and corporate services — on your own server
 
-[![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![CI](https://github.com/calleograph/mfa-gate/actions/workflows/ci.yml/badge.svg)](https://github.com/calleograph/mfa-gate/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/github/v/release/calleograph/mfa-gate?include_prereleases)](https://github.com/calleograph/mfa-gate/releases)
+[![Release](https://img.shields.io/github/v/release/calleograph/mfa-gate)](https://github.com/calleograph/mfa-gate/releases)
+[![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
-The main documentation is in Russian: [README.md](README.md), [Wiki](https://github.com/calleograph/mfa-gate/wiki).
+<img src="docs/images/overview-light.png" alt="MFA Gate admin panel: system state, sign-ins, sign-in problems" width="900">
 
-An employee types their password into the VPN client as usual and confirms the sign-in on their phone. The VPN gateway asks MFA Gate over RADIUS; MFA Gate checks the password (local or Active Directory / LDAP), applies a policy and waits for the confirmation.
+[Русский](README.md) · [Documentation (Russian)](wiki/Home.md) · [Releases](https://github.com/calleograph/mfa-gate/releases)
 
-![Admin panel overview](docs/images/overview-light.png)
+</div>
+
+---
+
+## What is MFA Gate
+
+MFA Gate protects your organization's remote access with a second factor. Employees type their usual domain password into the VPN client and then approve the sign-in on their phone — one tap with a fingerprint, or a code from an authenticator app. A leaked password is no longer enough: the attacker does not have the employee's phone.
+
+It installs with one command on your server and works with your Active Directory. Passwords, keys, sign-in logs and employee data stay inside your organization: there is no cloud intermediary, and the project's developers never receive your data. The only thing that leaves is a short "new request" signal to the phone — no login, address or sign-in details.
+
+## How it works for an employee
+
+1. **One-time setup in a couple of minutes.** The employee opens the self-service portal, signs in with their domain account, picks the phone app or any authenticator app, scans a QR code and receives backup codes.
+2. **Every VPN sign-in: as before, plus one tap.** The phone shows the request — resource, location, time — and the employee approves it with a fingerprint.
+3. **No signal on the phone?** A six-digit code from the authenticator app works offline.
+4. **Lost phone?** Sign in with a backup code and link a new one, or the administrator allows re-enrollment for 24 hours with one click.
 
 ## Features
 
-- **Employee self-service portal** (`/`): domain sign-in, first-time setup wizard (TOTP by default or the phone app), backup codes, own devices, sign-in history, sessions. First setup only from company networks and only before the first factor; after a lost phone — with an admin re-enrollment permit. The admin panel lives at `/admin/`.
-- **RADIUS server**: PAP, Access-Challenge for one-time codes, mandatory Message-Authenticator (BlastRADIUS mitigation), gateway retransmissions deduplicated; per-client "gateway already checked the password" mode (Ideco NGFW "Login" / "Login and OTP").
-- **Push approval** in the MFA Gate Authenticator Android app; the decision is signed with an ECDSA P-256 key from Android Keystore after biometrics or PIN. The push carries only a request ID.
-- **TOTP** (RFC 6238), works offline in any authenticator app.
-- **Active Directory / LDAP**: multiple controllers, LDAPS/StartTLS, nested and allowed groups, step-by-step diagnostics.
-- **Policies** by resource and group (`mfa` / `allow` / `deny`), web admin panel with roles, sign-in history with reject reasons, audit log.
-- **Two addresses**: internal portal/admin and an external HTTPS address for phones (`MFA_GATE_DEVICE_URL`, only `/api/device/` is served there); the "Addresses and publishing" screen generates nginx/Caddy configs — see [docs/network.md](docs/network.md).
-- **REST API v1** with OpenAPI (`/api/docs`) and scoped API keys.
-- **One-command operations**: `sudo ./install.sh`; `mfagatectl` for updates with automatic rollback, backups, restore and diagnostics.
+| Feature | Details |
+| --- | --- |
+| **Employee portal** | domain sign-in, enrollment wizard, backup codes, own phones and apps, sign-in history, sessions |
+| **Phone approval** | Android app; the decision is signed with a hardware-backed key after fingerprint or PIN, and the server accepts only signed answers from a linked phone |
+| **TOTP codes** | any authenticator app (RFC 6238), offline, single use |
+| **VPN over RADIUS** | Ideco NGFW, Cisco ASA, FortiGate, pfSense, OpenVPN, Windows NPS and any RADIUS PAP gateway; BlastRADIUS protection; gateway retries never create a second push |
+| **Active Directory / LDAP** | multiple controllers, LDAPS and StartTLS, nested groups, step-by-step connection diagnostics |
+| **Access policies** | where the second factor is required, who may sign in with a password only, who is denied; allowed methods |
+| **Safe first enrollment** | only from the company network, only for allowed groups and only while the employee has no factor yet |
+| **Admin panel** | users, phones, gateways, policies, sign-in history with the reason for every rejection, admin audit log, roles, light and dark themes, mobile-friendly |
+| **Addresses and publishing** | a page for network admins: which addresses and ports to open, for whom, with ready nginx and Caddy configs |
+| **REST API** | add the second factor to your own applications; OpenAPI, scoped keys with address restrictions |
+| **Operations** | one-command install, updates with automatic rollback, backups and restore, diagnostics, emergency admin access |
 
-## Android app
+## Installation
 
-Two flavors, both on the [Releases](https://github.com/calleograph/mfa-gate/releases) page: `gms` (Firebase Cloud Messaging of your own Firebase project) and `foss` (no Google code; instant notifications through a permanent background connection). Android 8.0+.
-
-## Requirements
-
-Ubuntu 22.04+ or Debian 12 (x86_64/aarch64), 1 vCPU, 1 GB RAM, 5 GB free disk, Internet access to `ghcr.io` or `github.com`. The installer sets up Docker itself. Ports: UDP 1812 (RADIUS from gateways), TCP 8080 (panel and phones; later 443 via a reverse proxy).
-
-## Quick install
+Ubuntu 22.04+ or Debian 12, 1 vCPU, 1 GB RAM, 5 GB disk. The installer sets up Docker itself.
 
 ```bash
 git clone https://github.com/calleograph/mfa-gate.git
@@ -40,32 +55,16 @@ cd mfa-gate
 sudo ./install.sh
 ```
 
-The installer prints the panel URL (`http://<server IP>:8080`), the `admin` login and a one-time temporary password. On first sign-in you change the password and enrol TOTP. Keep a copy of `deploy/data/secrets/master.key` away from the server: backups are useless without it.
+The installer prints the admin panel address and a one-time password. Keep a copy of `deploy/data/secrets/master.key` away from the server: backups cannot be restored without it. Update from the project directory with `sudo git pull && sudo mfagatectl update 0.3.1` — a database backup is taken first and a failed update rolls back automatically.
 
-## HTTPS
+## Android app
 
-Right after installation the panel runs over plain HTTP — use it only in an isolated network. Before rolling out to employees, put a TLS reverse proxy (nginx or Caddy) in front, set `MFA_GATE_PUBLIC_URL=https://…` and `MFA_GATE_HTTP_BIND=127.0.0.1`. Ready-to-use configs: [HTTPS через reverse proxy](https://github.com/calleograph/mfa-gate/wiki/HTTPS-через-reverse-proxy) (Russian).
+**MFA Gate Authenticator**, Android 8.0+, on the [Releases](https://github.com/calleograph/mfa-gate/releases) page. `gms` — phones with Google services; `foss` — phones without them, with its own connection to the server for instant requests.
 
-## Operations
+## What is tested
 
-```bash
-sudo mfagatectl status | logs [service] | diagnose
-sudo mfagatectl check-update && sudo mfagatectl update X.Y.Z   # backup → image → migrations → health check → auto-rollback
-sudo mfagatectl backup | restore <dir> | rollback
-sudo mfagatectl admin <login> | emergency <login>                # reset admin password / one-time emergency code
-```
-
-Reference: [docs/install.md](docs/install.md), [docs/admin-guide.md](docs/admin-guide.md), [docs/integrations.md](docs/integrations.md), [docs/api.md](docs/api.md), [docs/push.md](docs/push.md), [docs/ldap.md](docs/ldap.md), [docs/protocol/device-api.md](docs/protocol/device-api.md).
-
-## Status (0.2.0)
-
-- **Verified** by end-to-end tests on a Docker stack: RADIUS PAP/Challenge, signed push, TOTP, policies, REST API, install/update/rollback/backup/restore lifecycle; LDAP against a real OpenLDAP.
-- **Needs verification**: real VPN gateways (OpenVPN, NPS, Ideco, Cisco, FortiGate, MikroTik), a real Active Directory, real Android devices, FCM delivery, `install.sh` on a clean OS.
-- **Experimental**: HMS and UnifiedPush (server side only).
-- **Not implemented**: RADIUS Accounting, reply attributes (Class, Filter-Id, VSA), RADIUS "second factor only" mode.
-
-Details: [docs/testing.md](docs/testing.md).
+Every change runs unit tests, tests against a real OpenLDAP and a full Docker end-to-end stack: installation, RADIUS sign-in with phone approval, codes, policies, the portal, update, rollback, backup and restore. Not yet verified on real hardware: specific VPN gateway models, a real Active Directory, the app on a range of phones, Firebase delivery. Details: [docs/testing.md](docs/testing.md).
 
 ## License
 
-[Apache License 2.0](LICENSE). Author: Stanislav. Contributing: [CONTRIBUTING.md](CONTRIBUTING.md). Security reports: [SECURITY.md](SECURITY.md).
+[Apache License 2.0](LICENSE) — free to use, modify and embed, including commercially. Security reports: [SECURITY.md](SECURITY.md). Contributing: [CONTRIBUTING.md](CONTRIBUTING.md).

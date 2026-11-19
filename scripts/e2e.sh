@@ -58,8 +58,10 @@ step "сквозные тесты (RADIUS → push → подтверждени�
 if MFA_GATE_TEST_URL="http://127.0.0.1:$HTTP_PORT" MFA_GATE_TEST_RADIUS="127.0.0.1:$RADIUS_PORT" MFA_GATE_TEST_KEY="$KEY" \
    MFA_GATE_TEST_ADMIN="e2e-root:$ADMIN_PW" MFA_GATE_TEST_CLIENT_CIDR="$SUBNET" MFA_GATE_TEST_PUSH_TIMEOUT=10 \
    MFA_GATE_TEST_DEVICE_HOST=device.e2e.invalid \
-   "$ROOT/server/.venv/bin/pytest" -q -p no:cacheprovider "$ROOT/server/tests/test_stack.py" 2>&1 | tee "$WORK/pytest.txt" | tail -n 3; then
-  :
+   "$ROOT/server/.venv/bin/pytest" -q -rfE --tb=short -p no:cacheprovider "$ROOT/server/tests/test_stack.py" > "$WORK/pytest.txt" 2>&1; then
+  tail -n 3 "$WORK/pytest.txt"
+else
+  sed -n '/= FAILURES =/,$p' "$WORK/pytest.txt" | tail -n 80   # в журнал CI — имя теста и место отказа
 fi
 summary="$(grep -E '[0-9]+ (passed|failed)' "$WORK/pytest.txt" | tail -n1)"
 [[ "$summary" == *passed* && "$summary" != *failed* ]] && ok "сквозные тесты: $summary" || bad "сквозные тесты: $summary"
