@@ -226,3 +226,10 @@ async def test_trusted_identity_refreshes_from_directory(monkeypatch):
     assert (await run(None, ldap_service.LdapError("unavailable"))) == (None, "directory_unavailable")
     local = User(login="ivanov", source="local", groups=[])
     assert (await run(local, AssertionError("каталог не спрашивается"))) == (local, None)
+
+
+def test_portal_app_links_match_server_version():
+    from mfa_gate.api import portal
+    d = portal._app_links("9.8.7")
+    assert [i["flavor"] for i in d["android"]] == ["gms", "foss"]
+    assert d["android"][0]["url"].endswith("/download/v9.8.7/mfa-gate-authenticator-9.8.7-gms.apk") and "<svg" in d["android"][1]["qr_svg"]

@@ -4,6 +4,14 @@
 
 ## [Не выпущено]
 
+## [0.3.3] — 2026-11-19
+
+Приложение для телефона — прямо на главной личного кабинета.
+
+### Добавлено
+- Блок «Приложение для телефона» на главной личного кабинета (под формой входа) и в самом кабинете: APK той же версии, что и сервер, для телефонов с сервисами Google и без них. На компьютере — QR-код для скачивания камерой телефона, на телефоне — кнопка «Скачать APK»; подсказка для iPhone.
+- В мастере привязки телефона — прямые ссылки на оба варианта APK вместо общей страницы выпусков.
+
 ## [0.3.2] — 2026-11-19
 
 Безопасность входа без пароля, меньше ручных шагов, понятнее панель.
@@ -109,7 +117,8 @@
 - RADIUS Accounting, атрибуты ответа (Class, Filter-Id, VSA).
 - Режим «только второй фактор» по RADIUS.
 
-[Не выпущено]: https://github.com/calleograph/mfa-gate/compare/v0.3.2...HEAD
+[Не выпущено]: https://github.com/calleograph/mfa-gate/compare/v0.3.3...HEAD
+[0.3.3]: https://github.com/calleograph/mfa-gate/releases/tag/v0.3.3
 [0.3.2]: https://github.com/calleograph/mfa-gate/releases/tag/v0.3.2
 [0.3.1]: https://github.com/calleograph/mfa-gate/releases/tag/v0.3.1
 [0.3.0]: https://github.com/calleograph/mfa-gate/releases/tag/v0.3.0

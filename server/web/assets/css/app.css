@@ -603,6 +603,19 @@ dialog.modal::backdrop { background: var(--scrim); -webkit-backdrop-filter: blur
 .auth-panel .btn.primary { width: 100%; padding: 0 var(--s4); }
 .auth-alt { display: flex; justify-content: center; }
 .auth-foot { display: flex; justify-content: center; padding-top: var(--s5); }
+/* приложение для телефона: на главной кабинета под формой входа и в кабинете */
+.auth-main { gap: var(--s4); align-content: center; }
+.app-slot { width: min(480px, 100%); }
+.app-slot:empty { display: none; }
+.app-card h2 { font-size: var(--f18); margin-bottom: var(--s2); }
+.app-block { display: grid; gap: var(--s4); font-size: var(--f14); }
+.app-list { display: grid; gap: var(--s4); }
+.app-item { display: grid; grid-template-columns: 112px minmax(0, 1fr); gap: var(--s4); align-items: center; }
+.app-item .qr { width: 112px; height: 112px; padding: var(--s2); box-shadow: none; }
+.app-text { display: grid; gap: var(--s1); justify-items: start; min-width: 0; }
+.app-text .btn { margin-top: var(--s2); }
+/* на телефоне QR не нужен: файл скачивается кнопкой */
+@media (max-width: 767px) { .app-item { grid-template-columns: minmax(0, 1fr); } .app-qr { display: none; } .app-text .btn { min-height: 44px; } }
 .otp-input { font-family: var(--mono); font-size: var(--f20); letter-spacing: .3em; text-align: center; }
 .otp-input::placeholder { letter-spacing: .3em; }
 

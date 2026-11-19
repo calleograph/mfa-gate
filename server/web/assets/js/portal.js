@@ -10,7 +10,10 @@ if (/^#\/(users|groups|devices|resources|radius|api-clients|ldap|policies|histor
 }
 
 const root = document.getElementById('app');
-const RELEASES = 'https://github.com/calleograph/mfa-gate/releases';
+// ссылки на приложение той же версии, что и сервер (без входа); загружаются один раз
+const appInfo = get('/portal/app').catch(() => null);
+let app = null;
+appInfo.then((d) => { app = d; });
 const DENIED = {
   reenroll: 'Второй фактор для вашей учётной записи уже настраивался. Если телефон потерян или сброшен, обратитесь к администратору — он разрешит повторную настройку на сутки.',
   network: 'Первую настройку можно пройти только из сети компании. Подключитесь к офисной сети и войдите снова.',
@@ -36,12 +39,16 @@ function authScreen(message, state) {
   const foldA = h('div', { class: 'fold is-current', text: 'Учётная запись' });
   const foldB = h('div', { class: 'fold', text: 'Второй фактор' });
   const stage = h('div');
+  const appSlot = h('div', { class: 'app-slot' });
   fill(root, h('div', { class: 'auth' },
     h('main', { class: 'auth-main' }, h('div', { class: 'auth-card' },
       h('div', { class: 'brand' }, brandMark(), 'MFA Gate'),
       h('div', { class: 'folds', role: 'img', 'aria-label': 'Вход в два шага' }, foldA, foldB),
-      stage)),
+      stage),
+      appSlot),
     h('footer', { class: 'auth-foot' }, themeSwitch())));
+  appInfo.then((d) => d && fill(appSlot, h('section', { class: 'auth-card app-card', 'aria-labelledby': 'app-h' },
+    h('h2', { id: 'app-h', text: 'Приложение для телефона' }), appBlock(d))));
   const setStep = (n) => {
     foldA.className = 'fold ' + (n === 1 ? 'is-current' : 'is-done');
     foldB.className = 'fold ' + (n === 2 ? 'is-current' : n > 2 ? 'is-done' : '');
@@ -237,11 +244,26 @@ function totpForm(data, confirm, onErr = () => false) {
 function phoneSteps(data) {
   return h('div', { class: 'qr-wrap' }, qrImage(data.qr_svg, 'QR-код привязки телефона'),
     h('div', { class: 'qr-side' }, h('ol', null,
-      h('li', null, 'Установите на Android-телефон приложение MFA Gate Authenticator — файл выдаёт администратор или ', h('a', { href: RELEASES, target: '_blank', rel: 'noopener noreferrer', text: 'страница выпусков' }), '.'),
+      h('li', null, 'Установите на Android-телефон приложение MFA Gate Authenticator: ', appLinks(app), '.'),
       h('li', { text: 'В приложении нажмите «Сканировать QR-код» (если телефон уже привязан к другому серверу — «Серверы» → «Привязать ещё сервер») и наведите камеру на этот код.' }),
       h('li', { text: 'Разрешите уведомления: по ним вы будете подтверждать вход.' })),
       h('p', { class: 'faint', text: `Код действует до ${fmtDate(data.expires_at)} и подходит для одного телефона.` })));
 }
+
+// Блок скачивания: на компьютере — QR-код (навести камеру телефона), на телефоне — кнопка
+function appBlock(d) {
+  return h('div', { class: 'app-block' },
+    h('p', { class: 'muted', text: `MFA Gate Authenticator подтверждает вход в VPN одним касанием. Android 8.0 и новее, версия ${d.version}.` }),
+    h('ul', { class: 'app-list' }, d.android.map((a) => h('li', { class: 'app-item' },
+      h('div', { class: 'app-qr' }, qrImage(a.qr_svg, `QR-код для скачивания: ${a.title}`)),
+      h('div', { class: 'app-text' }, h('strong', { text: a.title }), h('span', { class: 'muted', text: a.text }),
+        button('Скачать APK', { kind: a.flavor === 'gms' ? 'primary' : 'secondary', size: 'sm', iconName: 'download', href: a.url, ariaLabel: `Скачать APK: ${a.title}` }))))),
+    h('p', { class: 'faint', text: 'iPhone: подключите любое приложение-аутентификатор с кодами — Яндекс Ключ, Google Authenticator или Microsoft Authenticator.' }));
+}
+
+// короткие ссылки для шага «установите приложение»
+const appLinks = (d) => (d ? h('span', null, h('a', { href: d.android[0].url, text: 'для телефонов с Google' }), ' или ', h('a', { href: d.android[1].url, text: 'без Google (Huawei и др.)' }))
+  : h('span', { text: 'файл выдаёт администратор' }));
 
 async function logout() {
   stop();
@@ -315,6 +337,8 @@ function render(content) {
       button(codesLeft ? 'Создать новые' : 'Создать коды', { kind: codesLeft ? 'secondary' : 'primary', iconName: 'list-checks', onClick: () => newBackupCodes(refresh, codesLeft) })),
   });
 
+  const appBody = h('div', { class: 'panel-body' }, loadingRegion(2));
+  const appPanel = panel({ title: 'Приложение для телефона', body: appBody });
   const historyBody = h('div', null, loadingRegion(4));
   const sessionsBody = h('div', null, loadingRegion(2));
   const help = panel({
@@ -331,7 +355,8 @@ function render(content) {
       cell(f.devices.length, plural(f.devices.length, ['телефон', 'телефона', 'телефонов']), f.devices.length ? 'подтверждение одним касанием' : 'push не подключён'),
       cell(codesLeft, 'резервных кодов', codesLeft ? 'на случай потери телефона' : 'не созданы', !codesLeft))),
     h('div', { class: 'c-8 stack' }, factorsPanel, panel({ title: 'История входов', body: historyBody })),
-    h('div', { class: 'c-4 stack' }, backupPanel, panel({ title: 'Сеансы личного кабинета', body: sessionsBody }), help)));
+    h('div', { class: 'c-4 stack' }, backupPanel, appPanel, panel({ title: 'Сеансы личного кабинета', body: sessionsBody }), help)));
+  appInfo.then((d) => (d ? fill(appBody, appBlock(d)) : appPanel.remove()));
 
   get('/portal/history').then((r) => fill(historyBody, r.items.length ? table({
     caption: 'Последние входы',

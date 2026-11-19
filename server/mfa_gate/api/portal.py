@@ -10,6 +10,7 @@ import ipaddress
 import secrets
 import uuid
 from datetime import UTC, datetime, timedelta
+from functools import lru_cache
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from pydantic import BaseModel, Field
@@ -151,6 +152,27 @@ async def _confirmed(session: AsyncSession, row: AdminSession, user: User, ip: s
 
 
 # ------------------------------------------------------------------------------------------------------- вход
+APP_RELEASES = "https://github.com/calleograph/mfa-gate/releases"
+APP_FLAVORS = (("gms", "Android с сервисами Google", "Большинство телефонов: уведомление о входе приходит, даже когда приложение закрыто."),
+               ("foss", "Android без сервисов Google", "Huawei и телефоны без Google: приложение само держит соединение с сервером."))
+
+
+@lru_cache(maxsize=2)
+def _app_links(version: str) -> dict:
+    base = f"{APP_RELEASES}/download/v{version}"
+    items = [{"flavor": flavor, "title": title, "text": text, "url": f"{base}/mfa-gate-authenticator-{version}-{flavor}.apk"}
+             for flavor, title, text in APP_FLAVORS]
+    for item in items:
+        item["qr_svg"] = totp.qr_svg(item["url"])
+    return {"version": version, "android": items, "releases": f"{APP_RELEASES}/tag/v{version}"}
+
+
+@router.get("/app")
+async def app_download():
+    """Android-приложение той же версии, что и сервер: ссылки на APK и QR-коды для скачивания с экрана компьютера. Без входа."""
+    return _app_links(settings().version)
+
+
 @router.post("/login")
 async def login(body: LoginIn, request: Request, response: Response, session: AsyncSession = Depends(get_session)):
     ip = client_ip(request)

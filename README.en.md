@@ -55,7 +55,7 @@ cd mfa-gate
 sudo ./install.sh
 ```
 
-The installer prints the admin panel address and a one-time password. Keep a copy of `deploy/data/secrets/master.key` away from the server: backups cannot be restored without it. Update from the project directory with `sudo git pull && sudo mfagatectl update 0.3.2` — a database backup is taken first and a failed update rolls back automatically.
+The installer prints the admin panel address and a one-time password. Keep a copy of `deploy/data/secrets/master.key` away from the server: backups cannot be restored without it. Update from the project directory with `sudo git pull && sudo mfagatectl update 0.3.3` — a database backup is taken first and a failed update rolls back automatically.
 
 ## Android app
 
