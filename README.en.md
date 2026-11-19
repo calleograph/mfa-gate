@@ -14,17 +14,19 @@ An employee types their password into the VPN client as usual and confirms the s
 
 ## Features
 
-- **RADIUS server**: PAP, Access-Challenge for one-time codes, mandatory Message-Authenticator (BlastRADIUS mitigation), gateway retransmissions deduplicated.
+- **Employee self-service portal** (`/`): domain sign-in, first-time setup wizard (TOTP by default or the phone app), backup codes, own devices, sign-in history, sessions. First setup only from company networks and only before the first factor; after a lost phone — with an admin re-enrollment permit. The admin panel lives at `/admin/`.
+- **RADIUS server**: PAP, Access-Challenge for one-time codes, mandatory Message-Authenticator (BlastRADIUS mitigation), gateway retransmissions deduplicated; per-client "gateway already checked the password" mode (Ideco NGFW "Login" / "Login and OTP").
 - **Push approval** in the MFA Gate Authenticator Android app; the decision is signed with an ECDSA P-256 key from Android Keystore after biometrics or PIN. The push carries only a request ID.
 - **TOTP** (RFC 6238), works offline in any authenticator app.
 - **Active Directory / LDAP**: multiple controllers, LDAPS/StartTLS, nested and allowed groups, step-by-step diagnostics.
 - **Policies** by resource and group (`mfa` / `allow` / `deny`), web admin panel with roles, sign-in history with reject reasons, audit log.
+- **Two addresses**: internal portal/admin and an external HTTPS address for phones (`MFA_GATE_DEVICE_URL`, only `/api/device/` is served there); the "Addresses and publishing" screen generates nginx/Caddy configs — see [docs/network.md](docs/network.md).
 - **REST API v1** with OpenAPI (`/api/docs`) and scoped API keys.
 - **One-command operations**: `sudo ./install.sh`; `mfagatectl` for updates with automatic rollback, backups, restore and diagnostics.
 
 ## Android app
 
-Two flavors, both on the [Releases](https://github.com/calleograph/mfa-gate/releases) page: `gms` (Firebase Cloud Messaging of your own Firebase project) and `foss` (no Google code; requests appear while the app is open). Android 8.0+.
+Two flavors, both on the [Releases](https://github.com/calleograph/mfa-gate/releases) page: `gms` (Firebase Cloud Messaging of your own Firebase project) and `foss` (no Google code; instant notifications through a permanent background connection). Android 8.0+.
 
 ## Requirements
 
