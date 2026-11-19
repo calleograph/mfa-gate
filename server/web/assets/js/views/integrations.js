@@ -61,7 +61,7 @@ export function radiusPage(ctx) {
     createLabel: 'Добавить клиент', createTitle: 'Новый RADIUS-клиент', createdText: 'RADIUS-клиент добавлен',
     name: (c) => c.name,
     extras: async (c) => ({ resources: await loadResources(c) }),
-    empty: { iconName: 'router', title: 'RADIUS-клиентов пока нет', text: 'Добавьте VPN-шлюз: укажите его адрес и ресурс. Общий секрет будет показан один раз после создания.' },
+    empty: { iconName: 'router', title: 'RADIUS-клиентов пока нет', text: 'Добавьте VPN-шлюз: укажите его название и адрес. Общий секрет будет показан один раз после создания.' },
     columns: ({ resources }) => [
       { label: 'Клиент', primary: true, render: (c) => cellMain(c.name, [c.first_factor === 'gateway' ? 'пароль проверяет шлюз' : null, c.nas_identifier ? `NAS-Identifier: ${c.nas_identifier}` : null].filter(Boolean).join(' · ') || null) },
       { label: 'Адрес', render: (c) => h('span', { class: 'td-mono', text: c.address }) },
@@ -70,9 +70,8 @@ export function radiusPage(ctx) {
       { label: 'Последний запрос', opt: true, render: (c) => timeEl(c.last_seen_at) },
     ],
     fields: ({ resources }, row) => [
-      resources.length ? null : { type: 'node', node: notice('warning', 'Сначала создайте ресурс в разделе «Ресурсы» — клиент всегда относится к ресурсу.') },
       { name: 'name', label: 'Название', required: true, placeholder: 'Шлюз VPN в офисе', half: true },
-      { name: 'resource_id', type: 'select', label: 'Ресурс', required: true, half: true, options: resourceOptions(resources, resources.length ? null : 'Нет ресурсов') },
+      { name: 'resource_id', type: 'select', label: 'Ресурс', half: true, options: resourceOptions(resources, 'Создать автоматически'), hint: 'Для политик по ресурсу. Не выбран — ресурс VPN с названием клиента создастся сам.' },
       { name: 'address', label: 'Адрес шлюза', required: true, mono: true, half: true, placeholder: '192.0.2.10', hint: 'IP-адрес или сеть, например 198.51.100.0/28. Один адрес — один клиент.' },
       { name: 'nas_identifier', label: 'NAS-Identifier', mono: true, half: true, hint: 'Необязательно. Если задан, должен совпадать с атрибутом в запросе.' },
       { name: 'first_factor', type: 'choices', label: 'Кто проверяет доменный пароль', default: 'mfa_gate', options: [

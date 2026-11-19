@@ -38,15 +38,9 @@ export async function usersList(ctx) {
   async function load() {
     setQuery({ q: st.q, source: st.source, factor: st.factor, page: st.page });
     fill(results, loadingRegion(6));
-    let data, partial = false;
+    let data;
     try {
-      // shortcut: API не умеет фильтровать по наличию фактора — фильтруем первые 200 записей в браузере; нужен ?factor=none на сервере
-      if (st.factor === 'none') {
-        const all = await get('/users', { q: st.q, source: st.source, page: 1, size: 200 }, signal);
-        partial = all.total > 200;
-        const items = all.items.filter((u) => !u.devices && !u.totp);
-        data = { items, total: items.length };
-      } else data = await get('/users', { q: st.q, source: st.source, page: st.page, size: SIZE }, signal);
+      data = await get('/users', { q: st.q, source: st.source, factor: st.factor || undefined, page: st.page, size: SIZE }, signal);
     } catch (err) {
       if (err.name === 'AbortError') return;
       fill(results, errorState(err, load));
@@ -73,8 +67,8 @@ export async function usersList(ctx) {
         { cls: 'act', render: (u) => rowMenu(ctx, u, load) },
       ],
       rows: data.items,
-    }), partial ? h('div', { class: 'panel-foot' }, notice('warning', 'Фильтр «Нет фактора» применён к первым 200 пользователям: сервер пока не умеет фильтровать по наличию фактора. Уточните поиск, чтобы увидеть остальных.')) : null,
-    !st.factor && data.total > SIZE ? pager({ page: st.page, size: SIZE, total: data.total, onPage: (p) => { st.page = p; load(); } }) : null);
+    }),
+    data.total > SIZE ? pager({ page: st.page, size: SIZE, total: data.total, onPage: (p) => { st.page = p; load(); } }) : null);
   }
   await load();
 }

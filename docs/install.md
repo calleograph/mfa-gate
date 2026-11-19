@@ -37,7 +37,7 @@
 | `deploy/data/postgres/` | файлы PostgreSQL | владелец — пользователь контейнера postgres |
 | `deploy/data/secrets/master.key` | мастер-ключ (32 байта, base64) | каталог 700, файл 644 (читает uid 10001 в контейнере) |
 | `deploy/backups/` | копии `<время UTC>-<метка>/{db.dump,SHA256SUMS,manifest}`, `last-update`, архивы `diag-*.tar.gz` | 700 |
-| `deploy/compose.override.yml` | локальные дополнения (FCM, HMS); подхватывается `mfagatectl` автоматически | в Git не хранится |
+| `deploy/compose.override.yml` | локальные дополнения (файл FCM как Docker secret); подхватывается `mfagatectl` автоматически | в Git не хранится |
 | `/usr/local/bin/mfagatectl` | ссылка на `deploy/mfagatectl`, создаёт `install.sh` | — |
 | `/var/log/mfa-gate/install-<дата>-<время>.log` | журнал каждого запуска `install.sh` (без паролей) | каталог 700, файл 600 |
 
@@ -116,7 +116,7 @@ sudo MFA_GATE_HTTP_PORT=8180 MFA_GATE_RADIUS_PORT=11812 MFA_GATE_PUBLIC_URL=http
 
 ### Приложение
 
-Источник — `server/mfa_gate/config.py` (префикс `MFA_GATE_`). Переменные с пометкой «override» `compose.yml` в контейнеры не передаёт: задайте их в `deploy/compose.override.yml` в `environment` сервисов `api`, `radius`, `worker` (пример — [push.md](push.md#hms-экспериментально)).
+Источник — `server/mfa_gate/config.py` (префикс `MFA_GATE_`). Все переменные задаются в `deploy/.env` (пример со значениями по умолчанию — `deploy/.env.example`).
 
 | Переменная | По умолчанию | Назначение |
 |---|---|---|
@@ -134,14 +134,14 @@ sudo MFA_GATE_HTTP_PORT=8180 MFA_GATE_RADIUS_PORT=11812 MFA_GATE_PUBLIC_URL=http
 | `MFA_GATE_PUSH_UNIFIEDPUSH_HOSTS` | пусто | разрешённые хосты UnifiedPush (экспериментально) |
 | `MFA_GATE_MASTER_KEY_FILE` / `MFA_GATE_MASTER_KEY` | задаёт compose | мастер-ключ (файл или значение) |
 | `MFA_GATE_DATABASE_URL` | задаёт compose | строка подключения к PostgreSQL |
-| `MFA_GATE_OTP_CHALLENGE_TIMEOUT` | `120` | override: секунд на ввод кода после Access-Challenge |
-| `MFA_GATE_ENROLLMENT_TTL_HOURS` | `24` | override: срок QR-кода привязки телефона |
-| `MFA_GATE_ADMIN_SESSION_MINUTES` | `30` | override: сессия панели (продлевается при работе) |
-| `MFA_GATE_LOCKOUT_THRESHOLD`, `MFA_GATE_LOCKOUT_MINUTES` | `8`, `15` | override: блокировка после ошибок входа |
-| `MFA_GATE_PUSH_HMS_APP_ID`, `MFA_GATE_PUSH_HMS_CLIENT_SECRET` | пусто | override: Huawei Push Kit (экспериментально) |
-| `MFA_GATE_AUDIT_RETENTION_DAYS` | `365` | override: срок хранения журнала аудита |
-| `MFA_GATE_AUTH_REQUEST_RETENTION_DAYS` | `180` | override: срок хранения истории входов |
-| `MFA_GATE_DOCS_ENABLED` | `true` | override: `/api/docs` и `/api/openapi.json` |
+| `MFA_GATE_OTP_CHALLENGE_TIMEOUT` | `120` | секунд на ввод кода после Access-Challenge |
+| `MFA_GATE_ENROLLMENT_TTL_HOURS` | `24` | срок QR-кода привязки телефона |
+| `MFA_GATE_ADMIN_SESSION_MINUTES` | `30` | сессия панели (продлевается при работе) |
+| `MFA_GATE_LOCKOUT_THRESHOLD`, `MFA_GATE_LOCKOUT_MINUTES` | `8`, `15` | блокировка после ошибок входа |
+| `MFA_GATE_PUSH_HMS_APP_ID`, `MFA_GATE_PUSH_HMS_CLIENT_SECRET` | пусто | Huawei Push Kit (экспериментально) |
+| `MFA_GATE_AUDIT_RETENTION_DAYS` | `365` | срок хранения журнала аудита |
+| `MFA_GATE_AUTH_REQUEST_RETENTION_DAYS` | `180` | срок хранения истории входов |
+| `MFA_GATE_DOCS_ENABLED` | `true` | `/api/docs` и `/api/openapi.json` |
 
 Изменения `.env` применяются командой `sudo mfagatectl start`.
 

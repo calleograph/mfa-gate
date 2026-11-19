@@ -149,9 +149,11 @@ async def primary(session: AsyncSession, login: str, password: str) -> tuple[Use
                 unavailable = True
                 log.warning("каталог %s недоступен: %s", directory.name, exc.code)
                 continue
+            if exc.code != "invalid_credentials":   # отключена, истекла, нет группы — не подбор пароля: в счётчик не идёт
+                return user, "directory_denied"
             if user is not None:
                 await _record_failure(session, user)
-            return user, "ldap_password" if exc.code == "invalid_credentials" else "directory_denied"
+            return user, "ldap_password"
         provisioned = await _provision(session, directory, found)
         if provisioned is None:
             return user, "directory_denied"
@@ -162,6 +164,45 @@ async def primary(session: AsyncSession, login: str, password: str) -> tuple[Use
             return user, "user_disabled"
         return user, None
     return user, "directory_unavailable" if unavailable else "unknown_user"
+
+
+async def trusted_identity(session: AsyncSession, login: str) -> tuple[User | None, str | None]:
+    """Пароль уже проверил шлюз или приложение: запись и группы доменного пользователя берутся свежими из каталога сервисной
+    учётной записью — новый сотрудник заводится сам, а исключённый из группы или отключённый в каталоге не проходит по старым данным.
+    Каталог недоступен — отказ, как при входе с паролем; каталог без сервисной записи (поиск без пароля невозможен) — по сохранённой записи."""
+    from . import ldap as ldap_service   # noqa: PLC0415
+
+    user = await find_user(session, login)
+    if user is not None and user.source == "local":
+        return user, None
+    directories = (await session.scalars(select(LdapDirectory).where(LdapDirectory.enabled).order_by(LdapDirectory.priority))).all()
+    if user is not None and user.directory_id:
+        directories.sort(key=lambda d: d.id != user.directory_id)
+    reachable, gone, down = False, False, False   # gone — свой каталог ответил, что записи нет; down — каталог не ответил
+    for directory in directories:
+        try:
+            found = await ldap_service.lookup(directory, login, check=True)
+        except ldap_service.LdapError as exc:
+            if exc.code in ("unavailable", "tls_error", "config_error"):
+                log.warning("каталог %s: поиск без пароля невозможен: %s", directory.name, exc.code)
+                down = down or exc.code != "config_error"
+                continue
+            if exc.code != "not_found":
+                return user, "directory_denied"
+            found = None
+        reachable = True
+        if found is None:
+            gone = gone or (user is not None and user.directory_id == directory.id)
+            continue
+        provisioned = await _provision(session, directory, found)
+        return (user, "directory_denied") if provisioned is None else (provisioned, None)
+    if gone:
+        return user, "directory_denied"
+    if down:   # не смогли проверить, не отключён ли сотрудник: отказ, а не вход по устаревшей записи
+        return user, "directory_unavailable"
+    if user is not None:
+        return user, None
+    return None, "directory_unavailable" if directories and not reachable else "unknown_user"
 
 
 async def _groups(session: AsyncSession, user: User) -> set[str]:
@@ -226,10 +267,9 @@ async def begin(session: AsyncSession, *, login: str, password: str | None, reso
     if resource is not None and not resource.enabled:
         return reject("resource_disabled")
     if password is None:
-        user = await find_user(session, req.login)
-        reason = "unknown_user" if user is None else ("user_disabled" if user.status != "active" else None)
-        if user is not None and user.locked_until and user.locked_until > _now():
-            reason = "locked"
+        user, reason = await trusted_identity(session, req.login)
+        if not reason and user is not None:
+            reason = "locked" if user.locked_until and user.locked_until > _now() else ("user_disabled" if user.status != "active" else None)
     else:
         user, reason = await primary(session, login, password)
     if user is not None:

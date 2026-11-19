@@ -114,7 +114,7 @@ sudo ./install.sh
 ```bash
 cd mfa-gate
 sudo git pull
-sudo mfagatectl update 0.3.1
+sudo mfagatectl update 0.3.2
 ```
 
 Резервные копии, восстановление и диагностика: [Резервное копирование](wiki/Резервное-копирование.md), [Диагностика](wiki/Диагностика.md).

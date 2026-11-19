@@ -59,6 +59,10 @@ export function policiesPage(ctx) {
 }
 
 // ------------------------------------------------------------------ общий список с фильтрами и пагинацией
+// переключатель «Все входы / Проблемы входа»: один раздел меню, два вида
+const historyViews = (current) => segmented([{ value: '/history', label: 'Все входы' }, { value: '/problems', label: 'Проблемы входа' }],
+  current, (v) => { location.hash = '#' + v; }, 'Вид истории входов');
+
 async function filteredList(ctx, { title, desc, endpoint, filters, columns, emptyState, headActions, caption }) {
   const { main, query, setQuery, signal } = ctx;
   const SIZE = 50;
@@ -129,6 +133,7 @@ const reqStatus = (r) => { const [s, t] = REQUEST_STATUS[r.status] || ['neutral'
 export function historyPage(ctx) {
   return filteredList(ctx, {
     title: 'История входов', caption: 'История входов', endpoint: '/auth-requests',
+    headActions: () => [historyViews('/history')],
     desc: 'Каждая проверка входа через RADIUS, API и в эту панель: кто, куда, чем закончилось и почему.',
     filters: [
       { name: 'login', label: 'Пользователь', placeholder: 'Логин', span: 'tb-3', mono: true },
@@ -168,7 +173,8 @@ const FIX = {
 export async function problemsPage(ctx) {
   const { main, query, setQuery, signal, can } = ctx;
   let days = Number(query.get('days')) || 7;
-  const head = pageHead({ title: 'Проблемы входа', desc: 'Отказы и истёкшие запросы, сгруппированные по пользователю и причине. С этого списка удобно начинать разбор обращений «не могу войти».' });
+  const head = pageHead({ title: 'Проблемы входа', desc: 'Отказы и истёкшие запросы, сгруппированные по пользователю и причине. С этого списка удобно начинать разбор обращений «не могу войти».',
+    actions: [historyViews('/problems')] });
   const results = h('div', { 'aria-live': 'polite' });
   const bar = h('div', { class: 'panel-head' }, h('h2', { text: 'За период' }),
     segmented([1, 7, 30, 90].map((d) => ({ value: d, label: d === 1 ? 'Сутки' : `${d} ${plural(d, ['день', 'дня', 'дней'])}` })), days, (v) => { days = v; load(); }, 'Период'));
@@ -206,7 +212,7 @@ export async function auditPage(ctx) {
   exportBtn.setAttribute('download', 'mfa-gate-audit.csv');
   const head = await filteredList(ctx, {
     title: 'Журнал', caption: 'Журнал событий', endpoint: '/audit',
-    desc: 'Все действия администраторов и важные события системы. Записи не редактируются и не удаляются из панели; журнал хранится 365 дней, затем удаляется автоматически.',
+    desc: 'Все действия администраторов и важные события системы. Записи не редактируются и не удаляются из панели; по истечении срока хранения (по умолчанию 365 дней) удаляются автоматически.',
     headActions: () => [exportBtn],
     filters: [
       { name: 'event', label: 'Событие', span: 'tb-3', options: AUDIT_GROUPS },

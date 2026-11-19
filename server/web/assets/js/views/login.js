@@ -92,7 +92,7 @@ export function renderLogin(root, { onDone, message, themeSwitch }) {
         }
       });
     });
-    fill(stage, ...head('Смените временный пароль', 'Этот пароль выдан при установке и годится только для первого входа. Придумайте свой — затем подключите второй фактор.'), frm);
+    fill(stage, ...head('Смените временный пароль', 'Этот пароль выдан на сервере и годится только для первого входа. Придумайте свой — затем подключите второй фактор.'), frm);
     (current ? f.controls.new_password : f.controls.current_password).focus();
   }
 
@@ -160,7 +160,7 @@ export function renderLogin(root, { onDone, message, themeSwitch }) {
       h('div', { class: 'push-wait', role: 'status' }, h('p', { class: 'pw-text', text: 'Готовим секрет…' })));
     let data;
     try { data = await post('/auth/totp-setup'); } catch (err) {
-      if (err.code === 'already_enrolled') return codeStep(['totp']);
+      if (err.code === 'already_enrolled') return codeStep([]);   // фактор был, сейчас активного нет — вход только по аварийному коду
       if (err.code === 'password_change_required') return passwordChangeStep();
       if (err.status === 401) return sessionLost(err);
       fill(stage, ...head('Подключите второй фактор'), notice('error', err.message), button('Начать заново', { kind: 'primary', onClick: () => passwordStep() }));

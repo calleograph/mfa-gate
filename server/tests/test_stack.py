@@ -181,6 +181,8 @@ def test_wrong_password_and_unknown_user_rejected(ctx):
 def test_user_without_factor_rejected(ctx):
     pkt, _ = radius(f"eve-{RUN}", "Correct-Horse-Battery-1", ctx.radius_secret)
     assert pkt.code == rp.ACCESS_REJECT and "фактор" in (pkt.text(rp.REPLY_MESSAGE) or "")
+    listed = ctx.ok(ctx.api.get("/api/v1/users", params={"q": RUN, "factor": "none", "size": 200}))["items"]
+    assert f"eve-{RUN}" in {u["login"] for u in listed} and all(not u["devices"] and not u["totp"] for u in listed)
 
 
 def test_push_approve_end_to_end(ctx):
@@ -365,6 +367,19 @@ def test_resource_bound_key_cannot_switch_resource(ctx):
     resp = httpx.post(f"{URL}/api/v1/access-requests", auth=(key["key_id"], key["secret"]),
                       json={"login": f"alice-{RUN}", "password": "x", "resource_id": other["id"]})
     assert resp.status_code == 403
+
+
+def test_radius_client_without_resource_creates_it(ctx):
+    """Первый шлюз — одним действием: ресурс VPN с именем клиента создаётся сам, при изменении без ресурса прежний сохраняется."""
+    name = f"auto-gw-{RUN}"
+    rc = ctx.ok(ctx.api.post("/api/v1/radius-clients", json={"name": name, "address": "198.51.100.77/32"}), 201)
+    try:
+        res = next(r for r in ctx.ok(ctx.api.get("/api/v1/resources"))["items"] if r["id"] == rc["resource_id"])
+        assert res["name"] == name and res["kind"] == "vpn"
+        upd = ctx.ok(ctx.api.put(f"/api/v1/radius-clients/{rc['id']}", json={"name": name, "address": "198.51.100.77/32", "enabled": False}))
+        assert upd["resource_id"] == res["id"]
+    finally:
+        ctx.api.delete(f"/api/v1/radius-clients/{rc['id']}")
 
 
 def test_api_key_cannot_grant_admin_roles(ctx):

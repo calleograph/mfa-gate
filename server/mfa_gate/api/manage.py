@@ -108,7 +108,8 @@ async def _guard_last_superadmin(session: AsyncSession, user: User) -> None:
 
 
 @router.get("/users", tags=["users"])
-async def list_users(q: str = "", source: str | None = None, page: int = Query(1, ge=1), size: int = Query(50, ge=1, le=200),
+async def list_users(q: str = "", source: str | None = None, factor: str | None = Query(None, pattern="^none$"),
+                     page: int = Query(1, ge=1), size: int = Query(50, ge=1, le=200),
                      _: Principal = Depends(need("users:read")), session: AsyncSession = Depends(get_session)):
     stmt = select(User).order_by(User.login)
     if q:
@@ -116,6 +117,9 @@ async def list_users(q: str = "", source: str | None = None, page: int = Query(1
         stmt = stmt.where(or_(User.login.like(like), func.lower(User.display_name).like(like), func.lower(User.email).like(like)))
     if source in ("local", "ldap"):
         stmt = stmt.where(User.source == source)
+    if factor == "none":   # ни активного телефона, ни активного TOTP
+        stmt = stmt.where(~select(Device.id).where(Device.user_id == User.id, Device.status == "active").exists(),
+                          ~select(TotpFactor.id).where(TotpFactor.user_id == User.id, TotpFactor.status == "active").exists())
     rows, total = await _page(session, stmt, page, size)
     ids = [u.id for u in rows]
     dev = dict((await session.execute(select(Device.user_id, func.count()).where(Device.user_id.in_(ids), Device.status == "active")
@@ -437,7 +441,7 @@ async def delete_resource(resource_id: uuid.UUID, p: Principal = Depends(need("r
 
 # ---------------------------------------------------------------------------------------------- RADIUS-клиенты
 class RadiusClientIn(BaseModel):
-    resource_id: uuid.UUID
+    resource_id: uuid.UUID | None = Field(None, description="Пусто — ресурс VPN с именем клиента создаётся (или берётся существующий) сам")
     name: str = Field(min_length=1, max_length=255)
     address: str = Field(max_length=64)
     secret: str | None = Field(None, min_length=16, max_length=128, description="Пусто — сгенерировать; показывается один раз")
@@ -462,7 +466,16 @@ async def list_radius(_: Principal = Depends(need("radius:read")), session: Asyn
     return {"items": [radius_out(c) for c in rows], "total": len(rows)}
 
 
-async def _save_radius(session: AsyncSession, client: RadiusClient, body: RadiusClientIn) -> str | None:
+async def _save_radius(session: AsyncSession, client: RadiusClient, body: RadiusClientIn, actor: Principal) -> str | None:
+    if body.resource_id is None and client.resource_id:     # при изменении без ресурса — прежний
+        body.resource_id = client.resource_id
+    elif body.resource_id is None:                          # первый шлюз — без отдельного шага «создать ресурс»
+        resource = await session.scalar(select(Resource).where(Resource.name == body.name))
+        if resource is None:
+            resource = Resource(id=uuid.uuid4(), name=body.name, kind="vpn")
+            session.add(resource)
+            audit(session, "resource.created", actor=actor.name, target=body.name, ip=actor.ip, via="radius_client")
+        body.resource_id = resource.id
     _404(await session.get(Resource, body.resource_id))
     # один адрес — один клиент: иначе неясно, каким секретом проверять пакет (разные по размеру сети допустимы — выигрывает более узкая)
     if await session.scalar(select(RadiusClient.id).where(RadiusClient.address == body.address, RadiusClient.id != client.id)):
@@ -479,7 +492,7 @@ async def _save_radius(session: AsyncSession, client: RadiusClient, body: Radius
 @router.post("/radius-clients", tags=["radius"], status_code=201)
 async def create_radius(body: RadiusClientIn, p: Principal = Depends(need("radius:write")), session: AsyncSession = Depends(get_session)):
     client = RadiusClient(id=uuid.uuid4(), secret_enc="")
-    secret = await _save_radius(session, client, body)
+    secret = await _save_radius(session, client, body, p)
     session.add(client)
     audit(session, "radius_client.created", actor=p.name, target=body.name, ip=p.ip, address=client.address, first_factor=client.first_factor)
     await session.commit()
@@ -490,7 +503,7 @@ async def create_radius(body: RadiusClientIn, p: Principal = Depends(need("radiu
 async def update_radius(client_id: uuid.UUID, body: RadiusClientIn, p: Principal = Depends(need("radius:write")),
                         session: AsyncSession = Depends(get_session)):
     client = _404(await session.get(RadiusClient, client_id))
-    secret = await _save_radius(session, client, body)
+    secret = await _save_radius(session, client, body, p)
     audit(session, "radius_client.updated", actor=p.name, target=client.name, ip=p.ip, secret_changed=secret is not None,
           first_factor=client.first_factor)
     await session.commit()

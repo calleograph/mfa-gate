@@ -14,10 +14,9 @@ export async function overview(ctx) {
 
   const steps = [
     { title: 'Подключите каталог LDAP / AD', text: 'Чтобы сотрудники входили доменным паролем. Можно пропустить, если все учётные записи локальные.', href: '#/ldap', done: ldap === undefined ? null : (ldap?.total || 0) > 0, optional: true },
-    { title: 'Добавьте защищаемый ресурс', text: 'VPN или приложение, доступ к которому требует второго фактора.', href: '#/resources', done: d.resources > 0 },
-    { title: 'Подключите RADIUS-клиент', text: 'VPN-шлюз, который отправляет MFA Gate запросы на проверку.', href: '#/radius', done: d.radius_clients > 0 },
-    { title: 'Настройте политику доступа', text: 'Без политик второй фактор нужен всем — это безопасное значение по умолчанию.', href: '#/policies', done: policies === undefined ? null : (policies?.total || 0) > 0 },
-    { title: 'Привяжите телефон пользователю', text: 'Откройте карточку пользователя и покажите ему QR-код привязки.', href: '#/users', done: d.devices > 0 },
+    { title: 'Подключите VPN-шлюз', text: 'RADIUS-клиент: адрес шлюза и общий секрет. Ресурс для него создастся сам.', href: '#/radius', done: d.radius_clients > 0 },
+    { title: 'Настройте политику доступа', text: 'Без политик второй фактор нужен всем — это безопасное значение по умолчанию.', href: '#/policies', done: policies === undefined ? null : (policies?.total || 0) > 0, optional: true },
+    { title: 'Подключите сотрудников', text: 'Сотрудники сами настраивают второй фактор в личном кабинете из сети компании; телефон можно привязать и из карточки пользователя.', href: '#/users', done: d.devices + d.totp > 0 },
   ];
   const doneCount = steps.filter((s) => s.done).length;
   const nextIdx = steps.findIndex((s) => s.done === false);

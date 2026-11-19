@@ -17,7 +17,7 @@ class Settings(BaseSettings):
     public_url: str = "http://localhost:8080"   # внутренний адрес портала сотрудника и панели (/admin/)
     device_url: str = ""          # внешний адрес Device API для телефонов (в QR привязки); пусто — как public_url
     server_name: str = "MFA Gate"
-    version: str = "0.3.1"
+    version: str = "0.3.2"
 
     # сколько ждать ответа на push; шлюзу нужен RADIUS-таймаут больше этого значения (рекомендуется >= 60 с)
     push_timeout: int = 45

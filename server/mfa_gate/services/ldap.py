@@ -503,13 +503,18 @@ def _authenticate(cfg: _Cfg, login: str, password: str) -> DirectoryUser:
         _close(svc)
 
 
-def _lookup(cfg: _Cfg, login: str) -> DirectoryUser | None:
+def _lookup(cfg: _Cfg, login: str, check: bool) -> DirectoryUser | None:
     if not cfg.bind_dn:
         raise LdapError("config_error", "поиск без пароля пользователя требует сервисной учётной записи (bind_dn)")
     svc = _service(cfg)
     try:
         entry = _find(svc, cfg, login)
-        return None if entry is None else _user(cfg, entry, _groups(svc, cfg, entry), login)
+        if entry is None:
+            return None
+        if check:
+            _check_enabled(cfg, entry)
+            return _finish(svc, cfg, entry, login)
+        return _user(cfg, entry, _groups(svc, cfg, entry), login)
     finally:
         _close(svc)
 
@@ -640,14 +645,15 @@ async def authenticate(directory, login: str, password: str) -> DirectoryUser:
     return await asyncio.to_thread(_authenticate, cfg, login, password)
 
 
-async def lookup(directory, login: str) -> DirectoryUser | None:
-    """Пользователь и его группы без пароля (нужна сервисная запись). allowed_groups не применяется: решение принимает вызывающий."""
+async def lookup(directory, login: str, check: bool = False) -> DirectoryUser | None:
+    """Пользователь и его группы без пароля (нужна сервисная запись). check=True — как при входе: отключённая запись и запись вне
+    allowed_groups дают LdapError; иначе решение принимает вызывающий."""
     try:
         parse_login(login)
     except LdapError:
         return None
     cfg = _snapshot(directory)
-    return await asyncio.to_thread(_lookup, cfg, login)
+    return await asyncio.to_thread(_lookup, cfg, login, check)
 
 
 async def diagnose(directory, login: str | None = None, password: str | None = None) -> list[dict]:

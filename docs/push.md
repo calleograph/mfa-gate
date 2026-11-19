@@ -76,18 +76,11 @@ MFA Gate читает один JSON: файл service account как есть, �
 
 ## HMS (экспериментально)
 
-Серверная отправка через Huawei Push Kit написана, но не проверялась на реальном аккаунте, а сборки приложения с HMS пока нет. Переменные `compose.yml` не передаёт, поэтому они задаются в `compose.override.yml`:
+Серверная отправка через Huawei Push Kit написана, но не проверялась на реальном аккаунте, а сборки приложения с HMS пока нет. Переменные задаются в `deploy/.env` (права файла 600) и применяются `sudo mfagatectl start`:
 
-```yaml
-services:
-  api:
-    environment:
-      MFA_GATE_PUSH_HMS_APP_ID: "<App ID>"
-      MFA_GATE_PUSH_HMS_CLIENT_SECRET: "<секрет>"   # секрет в override: права файла 600
-  worker:
-    environment:
-      MFA_GATE_PUSH_HMS_APP_ID: "<App ID>"
-      MFA_GATE_PUSH_HMS_CLIENT_SECRET: "<секрет>"
+```bash
+MFA_GATE_PUSH_HMS_APP_ID=<App ID>
+MFA_GATE_PUSH_HMS_CLIENT_SECRET=<секрет>
 ```
 
 ## UnifiedPush (экспериментально)

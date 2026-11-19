@@ -63,7 +63,7 @@ flowchart LR
 
 ### Шаг 3. Настройте reverse proxy
 
-Возьмите готовый файл `/opt/mfa-gate/deploy/proxy/nginx.conf` или `/opt/mfa-gate/deploy/proxy/Caddyfile`, замените имена, сети и пути к сертификатам, включите сайт. Пошагово, с поправками на версию nginx — [HTTPS через reverse proxy](HTTPS-через-reverse-proxy.md), шаги 2а и 2б.
+Возьмите готовый файл `/opt/mfa-gate/deploy/proxy/nginx.conf` или `/opt/mfa-gate/deploy/proxy/Caddyfile`, замените имена, сети и пути к сертификатам, включите сайт. Пример nginx проходит `nginx -t` без правок на штатном nginx Ubuntu 24.04 и Debian 12; штатный сайт `/etc/nginx/sites-enabled/default` удалите. Пошагово, с поправками на другие версии nginx — [HTTPS через reverse proxy](HTTPS-через-reverse-proxy.md), шаги 2а и 2б.
 
 **Что увидите:** `nginx -t` — `test is successful` или `caddy validate` — `Valid configuration`.
 
@@ -142,6 +142,8 @@ sudo mfagatectl start
 
 | Что видно | Почему | Что сделать |
 |---|---|---|
+| `duplicate default server` в `nginx -t` | штатный сайт `default` тоже объявляет `default_server` | удалите `/etc/nginx/sites-enabled/default` |
+| `unknown directive "ssl_reject_handshake"` в `nginx -t` | nginx старше 1.19.4, например штатный в Ubuntu 22.04 | удалите блок с `ssl_reject_handshake` |
 | Телефон не привязывается к `auth.example.org` | сертификат не от публичного УЦ или неполная цепочка | Let's Encrypt, файл `fullchain.pem` |
 | Из дома запросы не доходят, в офисе доходят | телефон привязан по старому или внутреннему адресу | шаг 6 |
 | `https://auth.example.org/admin/` открывает панель | прокси не передаёт `Host` или совпадают имена в двух адресах | `proxy_set_header Host $host;`, проверьте `.env` |

@@ -141,7 +141,7 @@ sudo mfagatectl diagnose | grep 'Доставка push'
 
 ## HMS и UnifiedPush
 
-Обе отправки написаны только на стороне сервера и на реальных аккаунтах не проверялись, в приложении их поддержки пока нет. Переменные HMS задаются в `compose.override.yml`, UnifiedPush включается списком разрешённых хостов распределителя в `MFA_GATE_PUSH_UNIFIEDPUSH_HOSTS`. Подробности: <https://github.com/calleograph/mfa-gate/blob/main/docs/push.md>. Сроки появления в приложении: [Планы развития](Планы-развития.md).
+Обе отправки написаны только на стороне сервера и на реальных аккаунтах не проверялись, в приложении их поддержки пока нет. Переменные HMS `MFA_GATE_PUSH_HMS_APP_ID` и `MFA_GATE_PUSH_HMS_CLIENT_SECRET` задаются в `.env`, UnifiedPush включается списком разрешённых хостов распределителя в `MFA_GATE_PUSH_UNIFIEDPUSH_HOSTS`. Подробности: <https://github.com/calleograph/mfa-gate/blob/main/docs/push.md>. Сроки появления в приложении: [Планы развития](Планы-развития.md).
 
 ## Если не получается
 

@@ -93,9 +93,10 @@ sudo editor /etc/nginx/sites-available/mfa-gate
 
 Учтите версию nginx из `nginx -v`:
 
-- ниже 1.25.1 — удалите строки `http2 on;` и пишите `listen 443 ssl http2;`. Это касается nginx из пакетов Ubuntu 22.04 и 24.04 и Debian 12;
+- пример рассчитан на штатный nginx Ubuntu 24.04 и Debian 12 и проходит `nginx -t` без правок;
 - ниже 1.19.4 (Ubuntu 22.04) — удалите блок с `ssl_reject_handshake on;`. Внутреннее имя по-прежнему закрыто списком `allow`;
-- если на сервере уже есть сайт с `default_server` на 80 или 443, удалите соответствующий блок `default_server` из файла MFA Gate.
+- на nginx 1.25.1 и новее `listen 443 ssl http2;` работает, но выводит предупреждение — по желанию замените на отдельную строку `http2 on;`;
+- если на сервере уже есть сайт с `default_server` на 80 или 443 (например, штатный `/etc/nginx/sites-enabled/default`), удалите его или блок `default_server` из файла MFA Gate.
 
 Включите сайт:
 
@@ -200,7 +201,7 @@ curl -m 5 -s -o /dev/null -w '%{http_code}\n' https://mfa.example.org/admin/ || 
 
 | Что видно | Почему | Что сделать |
 |---|---|---|
-| `unknown directive "http2"` в `nginx -t` | nginx старше 1.25.1 | удалите `http2 on;`, пишите `listen 443 ssl http2;` |
+| `duplicate default server` в `nginx -t` | штатный сайт `default` тоже объявляет `default_server` | удалите `/etc/nginx/sites-enabled/default` |
 | `unknown directive "ssl_reject_handshake"` | nginx старше 1.19.4 | удалите этот блок |
 | `502 Bad Gateway` | MFA Gate не слушает адрес из `proxy_pass` | сверьте порт с `MFA_GATE_HTTP_PORT`, `sudo mfagatectl status` |
 | В журнале адрес прокси вместо адреса клиента | прокси не входит в доверенные | добавьте его в `MFA_GATE_TRUSTED_PROXIES`, `sudo mfagatectl start` |

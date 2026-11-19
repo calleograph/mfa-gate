@@ -66,7 +66,8 @@ def cmd_worker(_args) -> None:
     asyncio.run(run())
 
 
-async def _create_admin(login: str, password: str, display_name: str, temporary: bool = False) -> None:
+async def _create_admin(login: str, password: str, display_name: str, temporary: bool = False) -> str:
+    """Возвращает, что произошло: created | reset | promoted (обычный локальный пользователь стал главным администратором)."""
     from sqlalchemy import select   # noqa: PLC0415
 
     from .db import sessionmaker   # noqa: PLC0415
@@ -75,6 +76,7 @@ async def _create_admin(login: str, password: str, display_name: str, temporary:
     from .services.audit import audit   # noqa: PLC0415
     async with sessionmaker()() as session:
         user = await session.scalar(select(User).where(User.login == login))
+        kind = "created" if user is None else ("reset" if user.admin_role == "superadmin" else "promoted")
         if user is None:
             user = User(login=login, source="local", display_name=display_name, directory_groups=[])
             session.add(user)
@@ -82,8 +84,9 @@ async def _create_admin(login: str, password: str, display_name: str, temporary:
             raise SystemExit("пользователь из каталога: назначьте роль в панели, пароль меняется в каталоге")
         user.password_hash, user.admin_role, user.status = hash_password(password), "superadmin", "active"
         user.must_change_password, user.failed_attempts, user.locked_until = temporary, 0, None
-        audit(session, "admin.created_cli", target=login, severity="warning")
+        audit(session, "admin.created_cli", target=login, severity="warning", kind=kind)
         await session.commit()
+    return kind
 
 
 async def _has_superadmin() -> bool:
@@ -101,15 +104,17 @@ def cmd_create_admin(args) -> None:
     password = password or secrets.token_urlsafe(18)
     if len(password) < 12:
         raise SystemExit("пароль короче 12 символов")
-    async def flow() -> bool:   # одним asyncio.run: пул соединений привязан к циклу событий
+    async def flow() -> str | None:   # одним asyncio.run: пул соединений привязан к циклу событий
         if args.if_no_admin and await _has_superadmin():
-            return False
-        await _create_admin(args.login.strip().lower(), password, args.name or args.login, temporary=args.temporary)
-        return True
-    if not asyncio.run(flow()):
+            return None
+        return await _create_admin(args.login.strip().lower(), password, args.name or args.login, temporary=args.temporary)
+    kind = asyncio.run(flow())
+    if kind is None:
         print("главный администратор уже есть — пропущено")
         return
-    print(f"главный администратор {args.login} создан")
+    print({"created": f"главный администратор {args.login} создан",
+           "reset": f"пароль главного администратора {args.login} сброшен",
+           "promoted": f"внимание: {args.login} был обычным пользователем — теперь он главный администратор"}[kind])
     if generated:
         print(f"пароль (показывается один раз): {password}")
     if args.temporary:

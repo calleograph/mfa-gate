@@ -274,7 +274,7 @@ def _ar(req: AuthRequest) -> dict:
     status = STATUS_MAP.get(req.status, "rejected")
     if status == "pending" and req.method == "totp":
         status = "challenge"
-    return {"id": str(req.id), "status": status, "reason": req.reason, "message": authflow.REASONS.get(req.reason or "", ""),
+    return {"id": str(req.id), "status": status, "reason": req.reason, "message": authflow.public_message(req.reason) if req.reason else "",
             "method": req.method, "expires_at": req.expires_at.isoformat() if req.expires_at else None}
 
 

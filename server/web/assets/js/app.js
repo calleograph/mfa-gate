@@ -19,22 +19,25 @@ const NAV = [
     { path: '/users', label: 'Пользователи', icon: 'users', perm: 'users:read' },
     { path: '/groups', label: 'Группы', icon: 'users-round', perm: 'groups:read' },
     { path: '/devices', label: 'Устройства', icon: 'smartphone', perm: 'devices:read' },
+    { path: '/policies', label: 'Политики', icon: 'shield', perm: 'policies:read' },
   ] },
   { group: 'Интеграции', items: [
     { path: '/resources', label: 'Ресурсы', icon: 'server', perm: 'resources:read' },
     { path: '/radius', label: 'RADIUS-клиенты', icon: 'router', perm: 'radius:read' },
     { path: '/api-clients', label: 'API-клиенты', icon: 'key-round', perm: 'apiclients:read' },
     { path: '/ldap', label: 'LDAP / AD', icon: 'network', perm: 'ldap:read' },
-    { path: '/publication', label: 'Адреса и публикация', icon: 'external-link', perm: 'system:read' },
   ] },
   { group: 'Контроль', items: [
-    { path: '/policies', label: 'Политики', icon: 'shield', perm: 'policies:read' },
     { path: '/history', label: 'История входов', icon: 'history', perm: 'requests:read' },
-    { path: '/problems', label: 'Проблемы входа', icon: 'triangle-alert', perm: 'requests:read' },
     { path: '/audit', label: 'Журнал', icon: 'scroll-text', perm: 'audit:read' },
+  ] },
+  { group: 'Система', items: [
+    { path: '/publication', label: 'Адреса и публикация', icon: 'external-link', perm: 'system:read' },
     { path: '/diagnostics', label: 'Диагностика', icon: 'stethoscope', perm: 'system:read' },
   ] },
 ];
+// разделы без своего пункта меню подсвечивают родительский: «Проблемы входа» — вид «Истории входов»
+const NAV_ALIAS = { '/problems': '/history' };
 
 const ROUTES = [
   ['/', overview, 'system:read'],
@@ -149,7 +152,8 @@ async function render() {
   if (location.hash !== curHash) { prevHash = curHash; curHash = location.hash; }
   routeAbort?.abort();
   routeAbort = new AbortController();
-  const section = '/' + (path.split('/')[1] || '');
+  const raw = '/' + (path.split('/')[1] || '');
+  const section = NAV_ALIAS[raw] || raw;
   navLinks.forEach((a) => (a.dataset.path === section ? a.setAttribute('aria-current', 'page') : a.removeAttribute('aria-current')));
   if (shell.classList.contains('nav-open')) { shell.classList.remove('nav-open'); menuBtn.setAttribute('aria-expanded', 'false'); }
   clear(mainEl);

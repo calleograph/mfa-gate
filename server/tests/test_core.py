@@ -180,3 +180,49 @@ def test_settings_device_url_defaults_to_public():
 
     assert Settings(public_url="http://192.0.2.5:8080/").device_url == "http://192.0.2.5:8080"
     assert Settings(public_url="http://a", device_url="https://auth.example.org/").device_url == "https://auth.example.org"
+
+
+async def test_trusted_identity_refreshes_from_directory(monkeypatch):
+    """Пароль проверил шлюз: свежие данные из каталога; исключённый из каталога не проходит по старой записи; недоступный — по сохранённой."""
+    from types import SimpleNamespace
+
+    from mfa_gate.models import User
+    from mfa_gate.services import authflow
+    from mfa_gate.services import ldap as ldap_service
+
+    d1 = SimpleNamespace(id=uuid.uuid4(), name="corp")
+    stored = User(login="ivanov", source="ldap", directory_id=d1.id, groups=[])
+    session = SimpleNamespace(scalars=None)
+
+    async def scalars(_q):
+        return SimpleNamespace(all=lambda: [d1])
+    session.scalars = scalars
+
+    async def provision(_s, _d, found):
+        return User(login=found.login, source="ldap", directory_id=d1.id, groups=[])
+    monkeypatch.setattr(authflow, "_provision", provision)
+
+    def run(user, result):
+        async def find_user(_s, _login):
+            return user
+
+        async def lookup(_d, _login, check=False):
+            assert check
+            if isinstance(result, Exception):
+                raise result
+            return result
+        monkeypatch.setattr(authflow, "find_user", find_user)
+        monkeypatch.setattr(ldap_service, "lookup", lookup)
+        return authflow.trusted_identity(session, "ivanov")
+
+    fresh = SimpleNamespace(login="ivanov")
+    user, reason = await run(None, fresh)                                     # новый сотрудник заводится сам
+    assert reason is None and user.login == "ivanov"
+    assert (await run(stored, None))[1] == "directory_denied"                 # свой каталог: записи больше нет
+    assert (await run(stored, ldap_service.LdapError("not_allowed_group")))[1] == "directory_denied"
+    assert (await run(stored, ldap_service.LdapError("unavailable"))) == (stored, "directory_unavailable")   # не по устаревшей записи
+    assert (await run(stored, ldap_service.LdapError("config_error"))) == (stored, None)   # без сервисной записи — по сохранённой
+    assert (await run(None, None)) == (None, "unknown_user")
+    assert (await run(None, ldap_service.LdapError("unavailable"))) == (None, "directory_unavailable")
+    local = User(login="ivanov", source="local", groups=[])
+    assert (await run(local, AssertionError("каталог не спрашивается"))) == (local, None)

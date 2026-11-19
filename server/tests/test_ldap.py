@@ -314,6 +314,11 @@ async def test_lookup():
     user = await L.lookup(make_dir(), "alice")
     assert user is not None and "vpn-users" in user.groups
     assert await L.lookup(make_dir(), "nobody") is None
+    # check=True — как при входе (режим «пароль проверил шлюз»): вне allowed_groups — отказ
+    assert (await L.lookup(make_dir(allowed_groups=["vpn-users"]), "alice", check=True)).login == "alice"
+    with pytest.raises(L.LdapError) as e:
+        await L.lookup(make_dir(allowed_groups=["vpn-users"]), "bob", check=True)
+    assert e.value.code == "not_allowed_group"
 
 
 @ldap_test

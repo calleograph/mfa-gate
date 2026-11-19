@@ -14,7 +14,8 @@ export function groupsPage(ctx) {
     columns: () => [
       { label: 'Группа', primary: true, render: (g) => cellMain(g.name, g.description) },
       { label: 'Группа каталога', render: (g) => (g.directory_group ? h('span', { class: 'td-mono', text: g.directory_group }) : null) },
-      { label: 'Участников', cls: 'num', render: (g) => num(g.members) },
+      // сопоставленная группа пополняется из каталога при входе — число добавленных вручную её не описывает
+      { label: 'Участников', cls: 'num', render: (g) => (g.directory_group ? h('span', { class: 't2', text: g.members ? `${num(g.members)} вручную + из каталога` : 'из каталога' }) : num(g.members)) },
     ],
     fields: () => [
       { name: 'name', label: 'Название', required: true },
@@ -22,7 +23,7 @@ export function groupsPage(ctx) {
       { name: 'directory_group', label: 'Группа каталога', mono: true, placeholder: 'CN=VPN Users,OU=Groups,DC=corp,DC=example,DC=org', hint: 'DN или CN группы AD/LDAP. Пусто — группа только локальная, участников добавляют в карточке пользователя.' },
     ],
     toBody: (v) => ({ name: v.name, description: v.description || '', directory_group: v.directory_group || null }),
-    deleteText: (g) => `Группа исчезнет у ${num(g.members)} участников, а политики, которые на неё ссылаются по имени, перестанут срабатывать для них.`,
+    deleteText: (g) => `Группа исчезнет у ${g.directory_group ? 'всех её участников, в том числе пришедших из каталога' : `${num(g.members)} участников`}, а политики, которые на неё ссылаются по имени, перестанут срабатывать для них.`,
   });
 }
 

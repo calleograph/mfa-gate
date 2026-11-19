@@ -275,7 +275,7 @@ usage() {
   backup                  резервная копия базы в MFA_GATE_BACKUPS
   restore <каталог>       восстановить базу из копии
   diagnose                проверка и архив для поддержки без секретов
-  admin <логин>           создать/восстановить главного администратора (пароль печатается один раз)
+  admin <логин>           создать/восстановить главного администратора (временный пароль печатается один раз, при входе его нужно сменить)
   emergency <логин>       одноразовый аварийный код вместо второго фактора (журналируется)
   radius-test <логин>     тестовый Access-Request к своему RADIUS (спросит секрет и пароль)
   admin-init              первый администратор admin с временным паролем (если администратора ещё нет)
@@ -298,8 +298,9 @@ main() {
     backup) cmd_backup "${1:-manual}" ;;
     restore) cmd_restore "$@" ;;
     diagnose) cmd_diagnose ;;
-    admin) load_env; dc exec api python -m mfa_gate create-admin "${1:?укажите логин}" ;;
-    emergency) load_env; dc exec api python -m mfa_gate emergency-access "${1:?укажите логин}" ;;
+    # -T: работают и без терминала (из скрипта, по ssh без -t); пароль, выданный здесь, при первом входе нужно сменить
+    admin) load_env; dc exec -T api python -m mfa_gate create-admin --temporary "${1:?укажите логин}" ;;
+    emergency) load_env; dc exec -T api python -m mfa_gate emergency-access "${1:?укажите логин}" ;;
     radius-test) load_env; dc exec api python -m mfa_gate radius-test --host radius --port 1812 --user "${1:?укажите логин}" ;;
     admin-init) cmd_admin_init ;;
     uninstall) cmd_uninstall "$@" ;;
