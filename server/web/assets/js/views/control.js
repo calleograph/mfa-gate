@@ -39,9 +39,9 @@ export function policiesPage(ctx) {
         { value: 'push', label: 'Push на телефон', hint: 'Подтверждение одним нажатием в приложении MFA Gate.' },
         { value: 'totp', label: 'TOTP-код', hint: 'Шесть цифр из приложения-аутентификатора, работает без интернета.' },
       ] },
-      { name: 'on_unavailable', type: 'choices', label: 'Если у пользователя нет фактора или телефон не ответил', default: 'deny', options: [
+      { name: 'on_unavailable', type: 'choices', label: 'Если у пользователя нет подходящего фактора', default: 'deny', options: [
         { value: 'deny', label: 'Запретить вход', icon: 'lock', hint: 'Рекомендуется.' },
-        { value: 'allow', label: 'Пропустить по паролю', icon: 'shield-alert', risk: true, hint: 'Риск: при сбое push или без привязки вход защищён только паролем.' },
+        { value: 'allow', label: 'Пропустить по паролю', icon: 'shield-alert', risk: true, hint: 'Риск: пользователь без привязанного телефона или кода входит только по паролю. Неотвеченный запрос на телефон всё равно отклоняется.' },
       ] },
       { name: 'enabled', type: 'switch', label: 'Политика включена', default: true },
     ],
@@ -206,7 +206,7 @@ export async function auditPage(ctx) {
   exportBtn.setAttribute('download', 'mfa-gate-audit.csv');
   const head = await filteredList(ctx, {
     title: 'Журнал', caption: 'Журнал событий', endpoint: '/audit',
-    desc: 'Все действия администраторов и важные события системы. Записи не редактируются и не удаляются из панели.',
+    desc: 'Все действия администраторов и важные события системы. Записи не редактируются и не удаляются из панели; журнал хранится 365 дней, затем удаляется автоматически.',
     headActions: () => [exportBtn],
     filters: [
       { name: 'event', label: 'Событие', span: 'tb-3', options: AUDIT_GROUPS },

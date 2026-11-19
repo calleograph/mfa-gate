@@ -8,8 +8,7 @@
 * Пустой пароль отклоняется до обращения к серверу (иначе это анонимный bind). Анонимный bind не выполняется никогда.
 * Пароли (пользователя и сервисной записи) не логируются и не попадают в detail ошибок и шагов диагностики.
 * Вложенные группы: AD — LDAP_MATCHING_RULE_IN_CHAIN с постраничным поиском и откатом к memberOf; OpenLDAP — обход member/uniqueMember
-  вверх до глубины 10 с защитой от циклов.
-Основа — донор A app/auth/ldap.py и донор B llmp/ldap/client.py, diagnostics.py."""
+  вверх до глубины 10 с защитой от циклов."""
 from __future__ import annotations
 
 import asyncio

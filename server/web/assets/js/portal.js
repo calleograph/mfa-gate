@@ -238,7 +238,7 @@ function phoneSteps(data) {
   return h('div', { class: 'qr-wrap' }, qrImage(data.qr_svg, 'QR-код привязки телефона'),
     h('div', { class: 'qr-side' }, h('ol', null,
       h('li', null, 'Установите на Android-телефон приложение MFA Gate Authenticator — файл выдаёт администратор или ', h('a', { href: RELEASES, target: '_blank', rel: 'noopener noreferrer', text: 'страница выпусков' }), '.'),
-      h('li', { text: 'В приложении нажмите «Добавить учётную запись» и отсканируйте этот QR-код.' }),
+      h('li', { text: 'В приложении нажмите «Сканировать QR-код» (если телефон уже привязан к другому серверу — «Серверы» → «Привязать ещё сервер») и наведите камеру на этот код.' }),
       h('li', { text: 'Разрешите уведомления: по ним вы будете подтверждать вход.' })),
       h('p', { class: 'faint', text: `Код действует до ${fmtDate(data.expires_at)} и подходит для одного телефона.` })));
 }

@@ -77,7 +77,7 @@ export function radiusPage(ctx) {
       { name: 'nas_identifier', label: 'NAS-Identifier', mono: true, half: true, hint: 'Необязательно. Если задан, должен совпадать с атрибутом в запросе.' },
       { name: 'first_factor', type: 'choices', label: 'Кто проверяет доменный пароль', default: 'mfa_gate', options: [
         { value: 'mfa_gate', label: 'MFA Gate', icon: 'shield-check', hint: 'Шлюз передаёт логин и пароль (PAP), MFA Gate проверяет их в каталоге и запрашивает второй фактор.' },
-        { value: 'gateway', label: 'Сам шлюз', icon: 'router', risk: true, hint: 'Шлюз уже проверил пароль и присылает только логин или логин и OTP-код (Ideco: режимы «Логин», «Логин и OTP-код»). MFA Gate доверяет этому только для этого клиента.' },
+        { value: 'gateway', label: 'Сам шлюз', icon: 'router', risk: true, hint: 'Шлюз уже проверил пароль и присылает только логин или логин и OTP-код. MFA Gate доверяет этому только для этого клиента.' },
       ] },
       { name: 'secret', label: row ? 'Новый общий секрет' : 'Общий секрет', type: 'password', autocomplete: 'new-password', mono: true, trim: false,
         hint: row ? 'Оставьте пустым, чтобы не менять. Или используйте «Сменить секрет» в меню — MFA Gate сгенерирует новый.' : 'Оставьте пустым — MFA Gate сгенерирует надёжный секрет и покажет его один раз. Свой — от 16 символов.' },
@@ -89,7 +89,7 @@ export function radiusPage(ctx) {
       const secret = randomSecret();
       const res = await confirmDialog({
         title: `Сменить секрет «${c.name}»?`, confirmLabel: 'Сменить секрет', danger: true,
-        text: 'Старый секрет перестанет действовать сразу. Пока вы не укажете новый на шлюзе, входы через него будут отклоняться.',
+        text: 'Старый секрет перестанет действовать сразу. Пока вы не укажете новый на шлюзе, MFA Gate будет молча отбрасывать его запросы: шлюз увидит таймаут, в истории входов записей не будет.',
         action: () => put(`/radius-clients/${c.id}`, { resource_id: c.resource_id, name: c.name, address: c.address, nas_identifier: c.nas_identifier, first_factor: c.first_factor, enabled: c.enabled, secret }),
       });
       if (res) { showSecret(c, secret); reload(); }

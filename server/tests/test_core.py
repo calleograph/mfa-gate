@@ -8,7 +8,7 @@ from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import ec, rsa
 
 from mfa_gate.models import Group, Policy
-from mfa_gate.security import crypto
+from mfa_gate.security import crypto, totp
 from mfa_gate.security.secretbox import SecretBox, SecretBoxError
 from mfa_gate.services.audit import scrub
 from mfa_gate.services.policy import effective_groups, evaluate
@@ -170,6 +170,9 @@ def test_portal_enroll_networks_and_backup_codes():
     codes = portal.new_backup_codes()
     assert len(set(codes)) == 10 and all(len(c) == 11 and c[5] == "-" for c in codes)
     assert portal._norm_code(" ABCDE-fghjk ") == "abcdefghjk"
+    key, other = "A" * 43 + "=", "B" * 43 + "="
+    h = totp.hash_backup(key, "u1", "abcdefghjk")
+    assert len(h) == 64 and h != totp.hash_backup(other, "u1", "abcdefghjk") != totp.hash_backup(key, "u2", "abcdefghjk")
 
 
 def test_settings_device_url_defaults_to_public():

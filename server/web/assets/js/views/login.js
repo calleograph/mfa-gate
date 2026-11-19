@@ -106,11 +106,12 @@ export function renderLogin(root, { onDone, message, themeSwitch }) {
   function codeStep(methods) {
     stop();
     const errBox = h('div', { 'aria-live': 'polite' });
-    const code = h('input', { class: 'input otp-input', id: 'lg-code', inputmode: 'numeric', autocomplete: 'one-time-code', maxlength: 64, placeholder: '000000', 'aria-describedby': 'lg-code-h' });
+    const totp = methods.includes('totp');   // аварийный код — шестнадцатеричный xxxxxx-xxxxxx-xxxxxx
+    const code = h('input', { class: 'input otp-input', id: 'lg-code', inputmode: totp ? 'numeric' : 'text', autocomplete: 'one-time-code', maxlength: 64, placeholder: totp ? '000000' : 'xxxxxx-xxxxxx-xxxxxx', 'aria-describedby': 'lg-code-h' });
     const submit = button('Войти', { kind: 'primary', type: 'submit' });
     const frm = h('form', { class: 'auth-panel', novalidate: true },
-      h('div', { class: 'field' }, h('label', { for: 'lg-code', text: 'Код из приложения' }), code,
-        h('p', { class: 'hint', id: 'lg-code-h', text: 'Шесть цифр из приложения-аутентификатора. Аварийный код, выданный на сервере, тоже подходит.' })),
+      h('div', { class: 'field' }, h('label', { for: 'lg-code', text: totp ? 'Код из приложения' : 'Аварийный код' }), code,
+        h('p', { class: 'hint', id: 'lg-code-h', text: totp ? 'Шесть цифр из приложения-аутентификатора. Аварийный код, выданный на сервере, тоже подходит.' : 'Одноразовый код, выданный на сервере командой mfagatectl emergency.' })),
       errBox, submit,
       methods.includes('push') ? h('div', { class: 'auth-alt' }, button('Отправить запрос на телефон', { kind: 'ghost', iconName: 'smartphone', onClick: () => pushStep(methods) })) : null);
     frm.addEventListener('submit', (e) => {
@@ -145,7 +146,8 @@ export function renderLogin(root, { onDone, message, themeSwitch }) {
         if (err.status === 401) { sessionLost(err); return true; }
         return false;
       },
-      alt: methods.includes('totp') ? button('Ввести код вместо этого', { kind: 'ghost', iconName: 'key', onClick: () => codeStep(methods) }) : null,
+      // без TOTP — для аварийного кода (mfagatectl emergency), иначе при потерянном телефоне его некуда ввести
+      alt: button(methods.includes('totp') ? 'Ввести код вместо этого' : 'Ввести аварийный код', { kind: 'ghost', iconName: 'key', onClick: () => codeStep(methods) }),
     });
     stop = w.stop;
     fill(stage, ...head('Подтвердите вход', 'Пароль принят. Остался второй фактор.'), w.el);

@@ -10,7 +10,7 @@ MFA Gate предоставляет три программных интерфе
 | `/api/device/v1/` | приложение MFA Gate Authenticator | `Authorization: Device <device_id>:<device_secret>` |
 | `/health/live`, `/health/ready` | мониторинг, healthcheck | без аутентификации |
 
-Описание OpenAPI 3: `https://<сервер>/api/docs` (интерактивная страница) и `https://<сервер>/api/openapi.json`. Копия для версии из репозитория лежит в [openapi.json](openapi.json). Если `MFA_GATE_DOCS_ENABLED=false`, оба адреса отключены.
+Описание OpenAPI 3: `https://<сервер>/api/docs` (интерактивная страница) и `https://<сервер>/api/openapi.json`. Копия для версии из репозитория лежит в [openapi.json](openapi.json). Если `MFA_GATE_DOCS_ENABLED=false` (задаётся в `deploy/compose.override.yml`, в `.env` эта переменная не передаётся), оба адреса отключены.
 
 ## Версионирование
 

@@ -631,7 +631,7 @@ def test_portal_enrollment_rules_phone_and_recovery(ctx):
 
 
 def test_radius_gateway_first_factor(ctx):
-    """Шлюз сам проверил пароль (Ideco «Логин» / «Логин и OTP-код»): пустой пароль — push, цифры — OTP, иное — не пароль."""
+    """Шлюз сам проверил пароль (режимы «только логин» / «логин и код»): пустой пароль — push, цифры — OTP, иное — не пароль."""
     gil = ctx.user("gil")
     phone = ctx.enroll("gil")
     gwt = ctx.user("gwt")

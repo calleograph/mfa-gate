@@ -11,12 +11,13 @@ permissions:
 
 jobs:
   private-data:
-    name: Проверка на частные данные
+    name: Частные данные и вики
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - run: python3 scripts/check_private_data.py --self-test
       - run: python3 scripts/check_private_data.py
+      - run: python3 scripts/check_wiki.py --self-test && python3 scripts/check_wiki.py
 
   server:
     name: Сервер — ruff, pytest, LDAP

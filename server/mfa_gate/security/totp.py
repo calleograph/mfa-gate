@@ -17,9 +17,6 @@ from urllib.parse import quote
 STEP_S = 30
 DIGITS = 6
 WINDOW = 1                       # допускаются соседние шаги (расхождение часов до ±30 с)
-BACKUP_COUNT = 10
-_pepper: bytes = b""             # ключ HMAC для хэшей резервных кодов (производный от MFA_GATE_MASTER_KEY); без него хэш — просто SHA-256
-_ALPHABET = "abcdefghjkmnpqrstuvwxyz23456789"           # без похожих знаков (0/o, 1/l/i)
 
 
 def new_secret() -> str:
@@ -64,32 +61,8 @@ def qr_svg(data: str) -> str:
 
 
 # ----------------------------------------------------------------------------------------------- резервные коды
-def new_backup_codes(n: int = BACKUP_COUNT) -> list[str]:
-    return ["".join(secrets.choice(_ALPHABET) for _ in range(10)) for _ in range(n)]
-
-
-def format_backup(code: str) -> str:
-    return f"{code[:5]}-{code[5:]}"
-
-
-def normalize_backup(raw: str) -> str:
-    return "".join(ch for ch in raw.lower() if ch.isalnum())
-
-
-def looks_like_backup(raw: str) -> bool:
-    return len(normalize_backup(raw)) == 10
-
-
-def set_pepper(master_key_b64: str | None) -> None:
-    global _pepper
-    try:
-        raw = base64.b64decode(master_key_b64 or "", validate=True)
-    except (ValueError, TypeError):
-        raw = b""
-    _pepper = hmac.new(raw, b"mfa-gate-backup-code-v1", hashlib.sha256).digest() if raw else b""
-
-
-def hash_backup(user_id: str, code: str) -> str:
-    """HMAC-SHA256 резервного кода с ключом сервера и привязкой к пользователю: утечка одной базы не даёт проверить догадки, а 50 бит энтропии плюс
-    ограничение попыток делают перебор нереальным."""
-    return hmac.new(_pepper or b"mfa-gate-backup", f"{user_id}:{normalize_backup(code)}".encode(), hashlib.sha256).hexdigest()
+def hash_backup(master_key_b64: str, user_id: str, code: str) -> str:
+    """HMAC-SHA256 нормализованного кода на ключе, производном от мастер-ключа, с привязкой к пользователю: украденная база без
+    master.key не позволяет перебирать ~50 бит кода офлайн."""
+    pepper = hmac.new(base64.b64decode(master_key_b64), b"mfa-gate-backup-code-v1", hashlib.sha256).digest()
+    return hmac.new(pepper, f"{user_id}:{code}".encode(), hashlib.sha256).hexdigest()

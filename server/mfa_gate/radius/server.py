@@ -175,7 +175,7 @@ class RadiusProtocol(asyncio.DatagramProtocol):
 
         login = (pkt.text(rp.USER_NAME) or "").strip()
         raw_password = pkt.get(rp.USER_PASSWORD)
-        gateway = client.row.first_factor == "gateway"   # пароль уже проверил этот шлюз (Ideco «Логин» / «Логин и OTP-код»)
+        gateway = client.row.first_factor == "gateway"   # пароль уже проверил этот шлюз (режимы «только логин» / «логин и код»)
         if not login or (raw_password is None and not gateway):
             return reply(rp.ACCESS_REJECT, "Поддерживается только PAP" if pkt.get(rp.CHAP_PASSWORD) else "Нет имени или пароля")
         try:

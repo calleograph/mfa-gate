@@ -72,8 +72,6 @@ domain pfsense.org
 domain netgate.com
 
 # Публичная документация изученных продуктов (источники исследования)
-domain multifactor.ru
-domain ideco.ru
 domain telegram.org
 
 # install.sh: адрес только для определения основного интерфейса (ip route get), трафик не отправляется

@@ -48,7 +48,7 @@ async def checks(session: AsyncSession) -> dict:
     current = await session.scalar(text("SELECT version_num FROM alembic_version"))
     head = migration_head()
     out.append(_check("Миграции", "ok" if current == head else "error", f"схема {current}, ожидается {head}",
-                      "" if current == head else "Выполните ./mfagatectl update (миграции применяются перед запуском api)"))
+                      "" if current == head else "Посмотрите журнал: mfagatectl logs migrate; миграции применяются при запуске (mfagatectl install или update <версия>)"))
 
     try:
         box().decrypt(box().encrypt("probe"))

@@ -28,7 +28,7 @@ python3 -m venv .venv
 docker run -d --name mfa-gate-dev-pg -p 127.0.0.1:55432:5432 \
   -e POSTGRES_USER=mfagate -e POSTGRES_PASSWORD=mfagate -e POSTGRES_DB=mfagate postgres:16-alpine
 
-export MFA_GATE_DATABASE_URL=postgresql+asyncpg://mfa-gate:mfagate@127.0.0.1:55432/mfa-gate
+export MFA_GATE_DATABASE_URL=postgresql+asyncpg://mfagate:mfagate@127.0.0.1:55432/mfagate
 export MFA_GATE_MASTER_KEY="$(.venv/bin/python -m mfa_gate gen-master-key)"   # для разработки; рабочий ключ берётся из файла
 export MFA_GATE_PUBLIC_URL=http://127.0.0.1:8080
 export MFA_GATE_COOKIE_SECURE=false        # панель по http://, только локально

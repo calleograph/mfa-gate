@@ -39,6 +39,10 @@ def _norm_code(code: str) -> str:
     return "".join(code.lower().split()).replace("-", "")
 
 
+def _backup_hash(user: User, code: str) -> str:
+    return totp.hash_backup(settings().master_key, str(user.id), _norm_code(code))
+
+
 def new_backup_codes() -> list[str]:
     raw = ("".join(secrets.choice(BACKUP_ALPHABET) for _ in range(10)) for _ in range(BACKUP_CODES))
     return [f"{c[:5]}-{c[5:]}" for c in raw]
@@ -204,7 +208,8 @@ async def mfa(body: CodeIn, request: Request, session: AsyncSession = Depends(ge
         return await _confirmed(session, row, user, ip, "totp")
     now = datetime.now(UTC)
     used = await session.scalar(update(OneTimeToken).where(
-        OneTimeToken.user_id == user.id, OneTimeToken.purpose == "backup_code", OneTimeToken.token_hash == sha256_hex(_norm_code(body.code)),
+        OneTimeToken.user_id == user.id, OneTimeToken.purpose == "backup_code", # shortcut: принимаем и sha256 кодов 0.3.0; убрать, когда они выйдут из оборота
+        OneTimeToken.token_hash.in_((_backup_hash(user, body.code), sha256_hex(_norm_code(body.code)))),
         OneTimeToken.used_at.is_(None)).values(used_at=now).returning(OneTimeToken.id))
     if used:
         audit(session, "portal.backup_code_used", actor=user.login, ip=ip, severity="warning")
@@ -324,7 +329,7 @@ async def backup_codes(request: Request, session: AsyncSession = Depends(get_ses
     codes = new_backup_codes()
     expires = datetime.now(UTC) + timedelta(days=3650)
     for code in codes:
-        session.add(OneTimeToken(user_id=user.id, purpose="backup_code", token_hash=sha256_hex(_norm_code(code)), expires_at=expires,
+        session.add(OneTimeToken(user_id=user.id, purpose="backup_code", token_hash=_backup_hash(user, code), expires_at=expires,
                                  created_by=user.login))
     audit(session, "portal.backup_codes_issued", actor=user.login, ip=client_ip(request))
     await session.commit()

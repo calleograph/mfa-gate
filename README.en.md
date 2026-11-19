@@ -26,7 +26,7 @@ It installs with one command on your server and works with your Active Directory
 
 1. **One-time setup in a couple of minutes.** The employee opens the self-service portal, signs in with their domain account, picks the phone app or any authenticator app, scans a QR code and receives backup codes.
 2. **Every VPN sign-in: as before, plus one tap.** The phone shows the request — resource, location, time — and the employee approves it with a fingerprint.
-3. **No signal on the phone?** A six-digit code from the authenticator app works offline.
+3. **Prefer codes?** Instead of the MFA Gate app, any authenticator app works: six offline digits, and the VPN client asks for the code after the password.
 4. **Lost phone?** Sign in with a backup code and link a new one, or the administrator allows re-enrollment for 24 hours with one click.
 
 ## Features
@@ -36,7 +36,7 @@ It installs with one command on your server and works with your Active Directory
 | **Employee portal** | domain sign-in, enrollment wizard, backup codes, own phones and apps, sign-in history, sessions |
 | **Phone approval** | Android app; the decision is signed with a hardware-backed key after fingerprint or PIN, and the server accepts only signed answers from a linked phone |
 | **TOTP codes** | any authenticator app (RFC 6238), offline, single use |
-| **VPN over RADIUS** | Ideco NGFW, Cisco ASA, FortiGate, pfSense, OpenVPN, Windows NPS and any RADIUS PAP gateway; BlastRADIUS protection; gateway retries never create a second push |
+| **VPN over RADIUS** | Cisco ASA, FortiGate, pfSense, OpenVPN, Windows NPS any RADIUS PAP gateway, including gateways that check the password themselves; BlastRADIUS protection; gateway retries never create a second push |
 | **Active Directory / LDAP** | multiple controllers, LDAPS and StartTLS, nested groups, step-by-step connection diagnostics |
 | **Access policies** | where the second factor is required, who may sign in with a password only, who is denied; allowed methods |
 | **Safe first enrollment** | only from the company network, only for allowed groups and only while the employee has no factor yet |

@@ -50,6 +50,12 @@ TOKENS = {
     "токен Slack": re.compile(r"\bxox[abprs]-[A-Za-z0-9-]{10,}"),
     "токен GitLab": re.compile(r"\bglpat-[A-Za-z0-9_-]{20}\b"),
 }
+# Названия продуктов, изученных при разработке: в публичных текстах их нет. Сам список тоже не публикуется — локальный файл
+# scripts/reference-products-local.txt (по выражению в строке, без учёта регистра); без файла проверка пропускается.
+_REF_FILE = HERE / "reference-products-local.txt"
+_REF = [ln.strip() for ln in _REF_FILE.read_text(encoding="utf-8").splitlines() if ln.strip() and not ln.startswith("#")] \
+    if _REF_FILE.exists() else []
+REFERENCE_PRODUCTS = re.compile("|".join(_REF), re.IGNORECASE) if _REF else None
 HOME_PATH = re.compile(r"/home/(?!<)[A-Za-z0-9._-]+|/Users/[A-Za-z0-9._-]+/|/srv/projects\b|[A-Z]:\\Users\\[A-Za-z0-9._-]+",
                        re.IGNORECASE)
 
@@ -121,6 +127,8 @@ def scan_line(line: str, allow: Allow, key_file: bool) -> list[str]:
         found.append("закрытый ключ")
     found += [f"{label}" for label, rx in TOKENS.items() if rx.search(line)]
     found += [f"абсолютный путь {m.group(0)}" for m in HOME_PATH.finditer(line)]
+    if REFERENCE_PRODUCTS:
+        found += [f"название стороннего продукта {m.group(0)}" for m in REFERENCE_PRODUCTS.finditer(line)]
     return found
 
 

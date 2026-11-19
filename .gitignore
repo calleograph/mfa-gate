@@ -32,3 +32,4 @@ node_modules/
 
 # Локальный архив прежней реализации (Laravel) — в публикацию не входит
 _archive/
+scripts/reference-products-local.txt

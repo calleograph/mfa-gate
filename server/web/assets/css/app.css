@@ -1,6 +1,6 @@
 /* MFA Gate — панель управления. Без сборщика.
-   Система оформления «Стекло» (перенесена из тем «Переговорки»: tokens.css — палитра темы glass, glass.css — стеклянные поверхности,
-   design.css — кнопки, поля, пружинное движение, motion.css — появление страниц и окон). Геометрия по стандарту компоновки:
+   Система оформления «Стекло»: палитра, стеклянные поверхности, кнопки и поля с пружинным движением,
+   появление страниц и окон. Геометрия по стандарту компоновки:
    отступы 4·8·12·16·24·32·48·64, сетка 12/8/4, тап-цели ≥ 44 px. Стекло — только на крупных поверхностях; данные лежат на плотной подложке. */
 
 /* ---------------------------------------------------------------- шрифты (OFL, см. /assets/fonts/OFL.txt) */
@@ -50,7 +50,7 @@
   --shadow-btn: 0 14px 28px -14px color-mix(in srgb, var(--accent) 80%, transparent), inset 0 1px 0 rgba(255, 255, 255, .25);
   color-scheme: light;
 }
-/* тёмный вариант «Стекла»: та же система (стекло выводится из --surface), палитра — тёмная тема «Переговорки» */
+/* тёмный вариант «Стекла»: та же система (стекло выводится из --surface), палитра — тёмная */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     --bg: #0d121b; --surface: #161c27; --raised: #1d2532; --sunken: #121822;
@@ -119,7 +119,7 @@ body {
   font: 400 var(--f16)/1.5 var(--sans); font-optical-sizing: auto; letter-spacing: -.003em; font-feature-settings: "tnum" 1;
   -webkit-font-smoothing: antialiased; overflow-x: hidden;
 }
-/* мягкие волны сверху (bg-glass.svg из «Переговорки»), без привязки к содержимому */
+/* мягкие волны сверху, без привязки к содержимому */
 body::before { content: ""; position: fixed; inset: 0 0 auto 0; height: 640px; z-index: -1; pointer-events: none; opacity: var(--waves); background: url(../img/bg-glass.svg) center top / 100% auto no-repeat; }
 h1, h2, h3, p, ul, ol, dl, dd, figure { margin: 0; }
 h1, h2, h3 { font-family: var(--display); letter-spacing: -.015em; }
@@ -253,7 +253,7 @@ h1 .count { margin-left: var(--s2); font-weight: 600; color: var(--faint); lette
   .page-head .page-actions > .btn { flex: 1 1 auto; }
 }
 
-/* ---------------------------------------------------------------- панели: стеклянные карточки (.rc «Переговорки») */
+/* ---------------------------------------------------------------- панели: стеклянные карточки */
 .panel { position: relative; min-width: 0; background: var(--glass-strong); border: 1px solid var(--glass-line); border-radius: var(--r3); box-shadow: var(--shadow-glass);
   -webkit-backdrop-filter: blur(var(--blur)); backdrop-filter: blur(var(--blur)); }
 /* таблицы данных — на почти сплошной подложке: стекло не должно мешать чтению строк */
@@ -720,7 +720,7 @@ details[open] > summary { margin-bottom: var(--s2); }
 .cell-main .fix { font-size: var(--f14); color: var(--muted); line-height: 1.5; }
 .cell-main > .risk-line { justify-self: start; }
 
-/* ---------------------------------------------------------------- движение (motion.css «Переговорки»): короткое, без постоянного движения */
+/* ---------------------------------------------------------------- движение: короткое, без постоянного движения */
 @media (prefers-reduced-motion: no-preference) {
   @keyframes page-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
   @keyframes card-in { from { opacity: 0; transform: translateY(10px) scale(.97); } to { opacity: 1; transform: none; } }
