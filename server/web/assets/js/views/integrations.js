@@ -289,7 +289,7 @@ function ldapForm(ctx, d, reload) {
     { name: 'encryption', type: 'choices', label: 'Шифрование', default: 'ldaps', options: [
       { value: 'ldaps', label: 'LDAPS', icon: 'lock', hint: 'Рекомендуется. Порт 636.' },
       { value: 'starttls', label: 'StartTLS', icon: 'lock', hint: 'Шифрование поверх порта 389.' },
-      { value: 'none', label: 'Без шифрования', icon: 'shield-alert', risk: true, hint: 'Пароли идут открытым текстом. Только для стенда.' },
+      { value: 'none', label: 'Без шифрования', icon: 'shield-alert', risk: true, hint: 'Пароли идут по сети открытым текстом. Только для изолированной тестовой сети.' },
     ] },
     { name: 'port', type: 'number', label: 'Порт', half: true, min: 1, max: 65535, default: 636 },
     { name: 'timeout', type: 'number', label: 'Тайм-аут, с', half: true, min: 1, max: 60, default: 5 },
